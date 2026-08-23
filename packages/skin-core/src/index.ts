@@ -21,7 +21,7 @@ export {
   generateTokenPairs,
 } from './generate-tokens.js'
 export { getAllRoleImagePaths, getColorSourceImagePaths, listThemes, selectTheme, getThemeDir, getActiveTheme, getCharConfig, DEFAULT_CHAR_CONFIG } from './assets-loader.js'
-export { buildBootstrap, buildImageInjectionScript, imageFileToDataUri, imageFileToOptimizedDataUri } from './bootstrap-builder.js'
+export { buildBootstrap, buildBootstrapBody, buildImageInjectionScript, imageFileToDataUri, imageFileToOptimizedDataUri } from './bootstrap-builder.js'
 export { TOKEN_KEYS } from './types.js'
 export type { Tokens, TokenKey, RGB, Hex, ColorCluster, BuildOptions } from './types.js'
 

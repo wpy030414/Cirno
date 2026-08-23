@@ -84,7 +84,7 @@ export async function buildImageInjectionScript(): Promise<string> {
 /**
  * The shared bootstrap body (data-skin setter + image injection + inject.js).
  */
-async function buildBootstrapBody(injectJs: string): Promise<string> {
+export async function buildBootstrapBody(injectJs: string): Promise<string> {
   return (
     `;(function(){\n` +
     `  document.documentElement.dataset.skin = "active"\n` +

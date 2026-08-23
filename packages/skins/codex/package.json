@@ -1,0 +1,20 @@
+{
+  "name": "@skins/codex",
+  "description": "Deep-sea Maid Atelier skin for Codex Desktop",
+  "type": "module",
+  "scripts": {
+    "apply": "tsx src/index.ts",
+    "build-mapping": "tsx src/token-mapping.ts",
+    "test": "tsx --test src/token-mapping.test.ts src/patch-config.test.ts src/contrast.test.ts src/cdp-inject.test.ts"
+  },
+  "dependencies": {
+    "@skins/core": "workspace:*",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/ws": "8.18.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
