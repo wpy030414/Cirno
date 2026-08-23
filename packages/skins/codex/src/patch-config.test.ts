@@ -7,6 +7,7 @@ import path from 'node:path'
 import {
   MARKER,
   applySectionColors,
+  ensureChromeThemeStructure,
   hasMarker,
   patchConfigFile,
   restoreConfigFile,
@@ -63,12 +64,12 @@ test('首次 apply：只改 chromeTheme 颜色键，段外字节零改动，mark
   assert.ok(after.includes('sansFontSize = 15'), 'desktop 其他键被改动')
   assert.ok(after.includes('enabled = true'), 'plugins 段被改动')
   assert.ok(hasMarker(after.split(/\r?\n/)), 'marker 缺失')
-  // 段外零改动：过滤受管行（marker / 四个段 header / 颜色键）后，非空行序列一致
+  // 段外零改动：过滤受管行（marker / 六个段 header / 颜色键 / 结构键）后，非空行序列一致
   const strip = (s: string) =>
     s.split(/\r?\n/).filter((l) => {
       if (l.includes('codex-skin-marker')) return false
-      if (/^\[desktop\.appearance(Light|Dark)ChromeTheme(\.semanticColors)?\]$/.test(l.trim())) return false
-      if (/^(accent|ink|surface|diffAdded|diffRemoved|skill)\s*=/.test(l)) return false
+      if (/^\[desktop\.appearance(Light|Dark)ChromeTheme(\.semanticColors|\.fonts)?\]$/.test(l.trim())) return false
+      if (/^(accent|ink|surface|diffAdded|diffRemoved|skill|contrast|opaqueWindows|code|ui)\s*=/.test(l)) return false
       return true
     }).filter((l) => l.trim() !== '')
   assert.deepEqual(strip(after), strip(BASE), '受管段之外存在内容差异')
@@ -144,4 +145,76 @@ test('纯函数：applySectionColors / setAppearanceThemePin 不改变输入数�
   applySectionColors(lines, '[desktop.appearanceLightChromeTheme]', { accent: '#ff0000' })
   setAppearanceThemePin(lines, 'dark')
   assert.deepEqual(lines, snapshot, '纯函数不得修改输入')
+})
+
+// ── mac 严格 schema（26.818+）：结构键补全 ──────────────────────────
+
+const MINIMAL = [
+  'model = "gpt-5.6-sol"',
+  '[desktop]',
+  'followUpQueueMode = "steer"',
+  '',
+  '[desktop.appearanceLightChromeTheme]',
+  'accent = "#93b259"',
+  'ink = "#5c6a72"',
+  'surface = "#fdf6e3"',
+  '',
+  "[projects.'x']",
+].join('\n') + '\n'
+
+test('结构键补全：缺失 contrast/opaqueWindows/fonts 时补充（light 45 / dark 60 / opaque false）', () => {
+  const dir = tmpDir()
+  const cfg = path.join(dir, 'config.toml')
+  fs.writeFileSync(cfg, MINIMAL)
+  patchConfigFile(cfg, LIGHT, DARK)
+  const after = fs.readFileSync(cfg, 'utf8')
+  const lines = after.split('\n')
+  const lightIdx = lines.findIndex((l) => l.trim() === '[desktop.appearanceLightChromeTheme]')
+  const darkIdx = lines.findIndex((l) => l.trim() === '[desktop.appearanceDarkChromeTheme]')
+  assert.ok(lightIdx >= 0 && darkIdx >= 0, '两套 chromeTheme 段必须存在')
+  assert.ok(after.includes('contrast = 45'), 'light contrast 默认 45 未补充')
+  assert.ok(after.includes('contrast = 60'), 'dark contrast 默认 60 未补充')
+  assert.ok(after.includes('opaqueWindows = false'), 'opaqueWindows 默认 false 未补充')
+  assert.ok(after.includes('[desktop.appearanceLightChromeTheme.fonts]'), 'light fonts 段未补充')
+  assert.ok(after.includes('[desktop.appearanceDarkChromeTheme.fonts]'), 'dark fonts 段未补充')
+  const codeCount = (after.match(/^code = ""$/gm) ?? []).length
+  const uiCount = (after.match(/^ui = ""$/gm) ?? []).length
+  assert.equal(codeCount, 2, 'code 键应补充于两套 fonts 段')
+  assert.equal(uiCount, 2, 'ui 键应补充于两套 fonts 段')
+  assert.ok(after.includes('[desktop.appearanceLightChromeTheme.semanticColors]'), 'semanticColors 段缺失')
+  // 还原精确
+  restoreConfigFile(cfg, cfg + '.skin.bak')
+  assert.equal(fs.readFileSync(cfg, 'utf8'), MINIMAL)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('结构键保留：用户已有 contrast/opaqueWindows/fonts 值不被覆盖', () => {
+  const dir = tmpDir()
+  const cfg = path.join(dir, 'config.toml')
+  const custom = MINIMAL.replace(
+    'accent = "#93b259"',
+    'accent = "#93b259"\ncontrast = 80\nopaqueWindows = true\n\n[desktop.appearanceLightChromeTheme.fonts]\ncode = "SF Mono"\nui = "SF Pro"'
+  )
+  fs.writeFileSync(cfg, custom)
+  patchConfigFile(cfg, LIGHT, DARK)
+  const after = fs.readFileSync(cfg, 'utf8')
+  assert.ok(after.includes('contrast = 80'), '用户 contrast 被覆盖')
+  assert.ok(after.includes('opaqueWindows = true'), '用户 opaqueWindows 被覆盖')
+  assert.ok(after.includes('code = "SF Mono"'), '用户 fonts.code 被覆盖')
+  assert.ok(after.includes('ui = "SF Pro"'), '用户 fonts.ui 被覆盖')
+  assert.ok(!after.includes('contrast = 45'), 'light 用户 contrast 被默认值覆盖')
+  assert.ok(after.includes('contrast = 60'), 'dark 段缺失时仍应补充默认 contrast 60')
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('ensureChromeThemeStructure：缺失段 no-op、纯函数、幂等', () => {
+  const lines = MINIMAL.split('\n')
+  const snapshot = [...lines]
+  assert.deepEqual(ensureChromeThemeStructure(lines, '[desktop.appearanceDarkChromeTheme]', { contrast: 60, opaqueWindows: false }), lines)
+  assert.deepEqual(lines, snapshot, '纯函数不得修改输入')
+  const once = ensureChromeThemeStructure(lines, '[desktop.appearanceLightChromeTheme]', { contrast: 45, opaqueWindows: false })
+  const twice = ensureChromeThemeStructure(once, '[desktop.appearanceLightChromeTheme]', { contrast: 45, opaqueWindows: false })
+  assert.deepEqual(twice, once, '幂等：二次调用不得再改')
+  assert.ok(once.includes('contrast = 45') && once.includes('opaqueWindows = false'))
+  assert.ok(once.includes('[desktop.appearanceLightChromeTheme.fonts]'))
 })

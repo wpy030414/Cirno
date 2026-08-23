@@ -2,7 +2,9 @@
 // config.toml 补丁引擎（官方 chrome 层，辅通道）：
 //   - 行级段编辑：只改 [desktop.appearanceLightChromeTheme] / [desktop.appearanceDarkChromeTheme]
 //     及其 .semanticColors 子段的颜色键；段外字节零改动；
-//     contrast / opaqueWindows / fonts 等用户键一律保留
+//     contrast / opaqueWindows / fonts 等用户键一律保留（存在即不动，缺失才补充）
+//   - mac 严格 schema（26.818+ 实测）：chromeTheme 全字段必填（contrast/fonts/opaqueWindows），
+//     缺失整段会被 app 静默丢弃——ensureChromeThemeStructure 按需补全结构键
 //   - marker 幂等检测；--force 从 .skin.bak（pristine）还原再打
 //   - .skin.bak 双重身份：回滚副本 + pristine source（DECISIONS D-010）
 //   - --pin light|dark 仅测试用：写 [desktop] 的 appearanceTheme；还原时随 .bak 覆盖消失
@@ -88,6 +90,57 @@ export function setAppearanceThemePin(lines: string[], pin: 'light' | 'dark'): s
   return [...lines.slice(0, start + 1), ...next, ...lines.slice(end)]
 }
 
+export interface ChromeThemeStructureDefaults {
+  contrast: number
+  opaqueWindows: boolean
+}
+
+function keyOfLine(line: string): string | null {
+  const m = line.match(/^\s*([A-Za-z0-9_-]+)\s*=/)
+  return m ? m[1] : null
+}
+
+/**
+ * 补全 chromeTheme 结构键（mac 26.818+ schema 全字段必填，缺失整段被 app 静默丢弃）。
+ * 存在即保留（用户键不动）；缺失才补充：contrast / opaqueWindows + .fonts 子段（code/ui 空串，
+ * 应用内等价 null = 系统默认字体）。纯函数。
+ */
+export function ensureChromeThemeStructure(
+  lines: string[],
+  header: string,
+  defaults: ChromeThemeStructureDefaults
+): string[] {
+  let result = [...lines]
+  const section = findSection(result, header)
+  if (section.start === -1) return result
+
+  const body = result.slice(section.start + 1, section.end)
+  const missing: string[] = []
+  if (!body.some((l) => keyOfLine(l) === 'contrast')) missing.push('contrast = ' + defaults.contrast)
+  if (!body.some((l) => keyOfLine(l) === 'opaqueWindows')) missing.push('opaqueWindows = ' + defaults.opaqueWindows)
+  if (missing.length > 0) {
+    result = [...result.slice(0, section.end), ...missing, ...result.slice(section.end)]
+  }
+
+  // fonts 子段（schema 必填）：header 形如 [desktop.appearanceLightChromeTheme] → 插回右括号
+  const fontHeader = header.slice(0, -1) + '.fonts]'
+  const fontSection = findSection(result, fontHeader)
+  if (fontSection.start === -1) {
+    const parent = findSection(result, header)
+    const block = ['', fontHeader, 'code = ""', 'ui = ""']
+    result = [...result.slice(0, parent.end), ...block, ...result.slice(parent.end)]
+  } else {
+    const fbody = result.slice(fontSection.start + 1, fontSection.end)
+    const fmissing: string[] = []
+    if (!fbody.some((l) => keyOfLine(l) === 'code')) fmissing.push('code = ""')
+    if (!fbody.some((l) => keyOfLine(l) === 'ui')) fmissing.push('ui = ""')
+    if (fmissing.length > 0) {
+      result = [...result.slice(0, fontSection.end), ...fmissing, ...result.slice(fontSection.end)]
+    }
+  }
+  return result
+}
+
 function readConfig(configPath: string): { raw: string; eol: string; bom: string } {
   const raw = fs.readFileSync(configPath, 'utf8')
   return {
@@ -161,6 +214,9 @@ export function patchConfigFile(
     diffRemoved: dark.diffRemoved,
     skill: dark.skill,
   })
+  // mac 严格 schema：补全结构键（存在即保留；缺失按内置默认：light contrast 45 / dark 60，opaqueWindows false）
+  lines = ensureChromeThemeStructure(lines, '[desktop.appearanceLightChromeTheme]', { contrast: 45, opaqueWindows: false })
+  lines = ensureChromeThemeStructure(lines, '[desktop.appearanceDarkChromeTheme]', { contrast: 60, opaqueWindows: false })
   if (options.pin) lines = setAppearanceThemePin(lines, options.pin)
 
   writeConfig(configPath, lines, eol, bom)
