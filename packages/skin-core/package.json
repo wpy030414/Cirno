@@ -9,7 +9,8 @@
   },
   "scripts": {
     "build": "tsx src/index.ts",
-    "preview": "tsx src/palette-preview.ts"
+    "preview": "tsx src/palette-preview.ts",
+    "test": "tsx --test src/extract-colors.test.ts"
   },
   "dependencies": {
     "sharp": "^0.33.0"

@@ -55,6 +55,28 @@ test('buildInjectScript：CSS 经 JSON 序列化，含引号与换行安全', ()
   assert.ok(text.includes("id = 'm-style'"), 'style id 不正确')
 })
 
+test('buildInjectScript：document 未就绪时返回错误串而非抛异常（mac 重启竞态防护）', () => {
+  // document 无 documentElement（导航提交中）——不得抛异常
+  const doc = {
+    head: { appendChild: () => {} },
+    createElement: () => ({ id: '', textContent: '' }),
+    getElementById: () => null,
+  }
+  const ctx = vm.createContext({ document: doc, window: {} })
+  const result = vm.runInNewContext(
+    buildInjectScript({ css: '.a{}', bootstrapBody: '', marker: 'codex-skin' }),
+    ctx
+  )
+  assert.equal(result, 'error: document not ready')
+})
+
+test('buildRemoveScript：document 未就绪时返回错误串而非抛异常', () => {
+  const doc = { getElementById: () => ({ remove: () => {} }) }
+  const ctx = vm.createContext({ document: doc, window: {} })
+  const result = vm.runInNewContext(buildRemoveScript('codex-skin'), ctx)
+  assert.equal(result, 'error: document not ready')
+})
+
 test('buildRemoveScript：删除 style、移除属性、清理变量', () => {
   const calls: string[] = []
   const doc = {

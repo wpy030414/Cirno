@@ -5,7 +5,7 @@
   "scripts": {
     "apply": "tsx src/index.ts",
     "build-mapping": "tsx src/token-mapping.ts",
-    "test": "tsx --test src/token-mapping.test.ts src/patch-config.test.ts src/contrast.test.ts src/cdp-inject.test.ts"
+    "test": "tsx --test src/token-mapping.test.ts src/patch-config.test.ts src/contrast.test.ts src/cdp-inject.test.ts src/darwin-contract.test.ts src/darwin-live.test.ts"
   },
   "dependencies": {
     "@skins/core": "workspace:*",
