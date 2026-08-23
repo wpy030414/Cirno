@@ -22,7 +22,7 @@
 tokens.json (46 个 token × light/dark 双套)
   ↓ skins/<target>/token-mapping.ts
 目标 CSS variables (dist/token-mapping.css)
-  ↓ skins/<target>/patch-asar.ts (bootstrap 内联注入)
+  ↓ skins/<target>/patch-asar.ts 或 cdp-inject.ts（codex：运行时注入）
 app.asar (data URI 图片 + inject.js 保活)
 ```
 
@@ -79,7 +79,7 @@ skin-assets 可容纳多个 `<name>.theme/` 目录。**主题选择只发生在 
 4. **不维护上游 app 代码**：本 monorepo 是独立分发，不是目标 app 的 fork。
 5. **不自动检测上游更新**：`app.asar` 被应用更新后需用户手动重跑 `pnpm apply:<target>`。
 6. **不扩展皮肤功能范围**：不加动画、不加音效、不加用户可配置面板——纯视觉主题。
-7. **不支持浏览器端插件分发**：仅面向桌面端 asar 补丁。
+7. **不支持浏览器端插件分发**：仅面向桌面端（asar 补丁或等价运行时注入）。
 
 ## 工作区约定
 
@@ -99,6 +99,7 @@ skin-assets 可容纳多个 `<name>.theme/` 目录。**主题选择只发生在 
 | skin-core | 取色 + token 生成 + 共享注入逻辑 | 不碰具体 app、不写 CSS、不写 token-mapping |
 | skin-assets | 共享图片库（多主题）+ 每主题 manifest | 不碰代码、不碰 tokens |
 | skins/qwenwork | QwenWork 皮肤实现（二进制补丁） | 不改 core 的 schema |
+| skins/codex | Codex Desktop 皮肤实现（官方 chrome 配置 + CDP 运行时注入） | 不改 core 的 schema |
 | skins/opencode | OpenCode 皮肤实现（extract/repack） | 不改 core 的 schema |
 
 ## 验证清单
@@ -110,5 +111,8 @@ skin-assets 可容纳多个 `<name>.theme/` 目录。**主题选择只发生在 
 5. `pnpm apply:qwenwork` → QwenWorkCN 重启带皮肤，`app.asar.skin.bak` 生成
 6. `pnpm dev:qwenwork` → QwenWorkCN 重启 + `Option+Cmd+I` 能开 DevTools
 7. `pnpm apply:opencode` → OpenCode 重启带皮肤
-8. 亮/暗主题切换正常（qwenwork 含 follow-system 模式）
-9. 还原：`.bak` 覆盖回 `app.asar` 后界面完全恢复原生
+8. `pnpm build-mapping:codex` → 生成 dist/token-mapping.css + token-mapping.toml + 官方导入串
+9. `pnpm apply:codex` → Codex Desktop 经 COM 激活重启（--remote-debugging-port=9335）并注入皮肤（会话内生效，重启后需重跑 apply）
+10. `pnpm apply:codex --pin light|dark`（仅测试）→ 明/暗切换验证；`pnpm apply:codex --restore` → 还原 config.toml 并重启原生
+11. 亮/暗主题切换正常（qwenwork 含 follow-system 模式）
+12. 还原：`.bak` 覆盖回 `app.asar` 后界面完全恢复原生
