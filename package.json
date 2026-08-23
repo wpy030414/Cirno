@@ -10,7 +10,10 @@
     "apply:qwenwork": "pnpm --filter @skins/qwenwork apply",
     "dev:opencode": "node scripts/dev-opencode.mjs",
     "build-mapping:opencode": "pnpm --filter @skins/opencode build-mapping",
-    "apply:opencode": "pnpm --filter @skins/opencode apply"
+    "apply:opencode": "pnpm --filter @skins/opencode apply",
+    "dev:codex": "node scripts/dev-codex.mjs",
+    "build-mapping:codex": "pnpm --filter @skins/codex build-mapping",
+    "apply:codex": "pnpm --filter @skins/codex apply"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
