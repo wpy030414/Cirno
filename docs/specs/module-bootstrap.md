@@ -37,6 +37,8 @@
 
 `injectBootstrapIntoHtml(html, bootstrap)`：在 `</head>` 之前插入（`</head>` 缺失抛错）。
 
+`buildBootstrapBody(injectJs)`：共享 bootstrap body（data-skin setter + 立绘注入脚本 + inject.js），不含 HTML 包装——供 CDP 运行时注入类渠道（skins/codex）复用，避免重复实现注入逻辑。
+
 ## 行为应该是什么（运行时）
 
 1. `document.documentElement.dataset.skin = "active"`

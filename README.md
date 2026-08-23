@@ -52,6 +52,9 @@ pnpm apply:qwenwork
 | `pnpm dev:opencode` | 关闭 OpenCode，带 `--enable-devtools` 重启 |
 | `pnpm build-mapping:opencode` | 读取 tokens，生成 `dist/token-mapping.css` |
 | `pnpm apply:opencode` | 给 OpenCode Desktop 打补丁（extract/repack 策略，跟随活动主题） |
+| `pnpm dev:codex` | 关闭 Codex Desktop，带 CDP 调试端口重启并注入皮肤（等价 apply:codex） |
+| `pnpm build-mapping:codex` | 读取 tokens，生成 token-mapping.css（CDP 层）+ token-mapping.toml（官方 chrome 层）+ 官方导入串 |
+| `pnpm apply:codex` | 给 Codex Desktop 换肤（官方 config 通道 + CDP 运行时注入，跟随活动主题；`--pin light\|dark` 仅测试，`--restore` 还原） |
 
 主题选择：**只在 build-tokens**——`--theme <name>` 参数 > `SKIN_THEME` 环境变量 > 终端交互选择；选定主题写入 `dist/tokens.json`，preview / apply 自动跟随。可用主题 = `packages/skin-assets/` 下 `<name>.theme/` 目录。切换主题 = `pnpm build-tokens --theme <name>` 后重跑 apply。
 
@@ -69,6 +72,7 @@ apply 支持参数（透传到各 skin 包）：
 - ✅ skin-assets：多主题结构（`<name>.theme/` × N，各带 manifest）+ 主题交互选择（`--theme` / `SKIN_THEME`）
 - ✅ skins/qwenwork：二进制补丁引擎 + token-mapping（~200 条映射）+ 组件 CSS
 - ✅ skins/opencode：extract/repack 引擎 + token-mapping（~300 条映射）+ 组件 CSS
+- ✅ skins/codex：官方 chrome 配置引擎 + CDP 运行时注入（180 条映射）+ 立绘装饰层（MSIX 受保护目录不碰 asar）
 - ✅ 共享注入：bootstrap 构建 + data URI 图片注入 + `data-skin` 属性保活
 - ✅ 双套对比度达标：light/dark 各渠道 28 项对比度检查全绿
 
@@ -81,6 +85,7 @@ apply 支持参数（透传到各 skin 包）：
 | 映射 | 各 skin 包函数映射 | token-mapping.ts 把通用 tokens 映射到目标 CSS variables（支持计算与 fallback） |
 | 注入 | data: URI + MutationObserver | 图片内联进 HTML，`html[data-skin]` 属性保活 |
 | 打包 | 二进制补丁 / `@electron/asar` | qwenwork 用二进制（unpacked 原生模块），opencode 用 extract/repack |
+| 运行时注入 | CDP（WebSocket，仅回环） | codex 用 COM 激活传参启动 + 运行时注入（MSIX 受保护目录不碰 asar） |
 | 运行时 | `tsx` (ES2022 + NodeNext) | TypeScript 直接执行，无编译步骤 |
 
 ## 项目结构
@@ -109,6 +114,7 @@ personalized-agent/
 │       ├── qwenwork/           # QwenWork 实现
 │       │   └── src/{index,patch-asar,token-mapping}.ts + skin.css
 │       └── opencode/           # OpenCode 实现
+│       └── codex/              # Codex Desktop 实现
 │           └── src/{index,patch-asar,token-mapping}.ts + skin.css
 └── docs/
     ├── PRD.md                  # 产品需求（为什么做、做什么）

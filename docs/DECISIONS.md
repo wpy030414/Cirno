@@ -395,6 +395,30 @@
 
 ---
 
+## D-025 — Codex Desktop 为什么走「官方 chrome 配置 + CDP 运行时注入」而不是 asar 补丁？
+
+**问题**：Codex Desktop（Windows）= MSIX 商店包（C:\Program Files\WindowsApps，BUILTIN\Users 只读，直接启动 exe 被应用容器拒绝）；asar 内 5688 条目但仅 webview/index.html 一个 HTML 锚点（受保护目录内）；主 UI 由 app:// 自定义协议加载本地 Vite bundle。
+
+**可选方案**：A. asar 补丁（copy-out + 主 bundle 手术）B. CDP 运行时注入（Fei-Away/Codex-Dream-Skin 生态主流，MIT）C. 官方外观通道（config.toml [desktop] appearance*ChromeTheme 键 + codex-theme-v1 导入串）
+
+**选择**：B 为主通道 + C 为辅通道（A 明确不做）。
+
+**为什么**：A 需复制 ~800MB 受保护目录、对 2.4MB minified 主 bundle 做偏移手术、每次 Store 更新即失效（且直接启动被拒，COM 激活无法注入环境变量）；B 不碰二进制、更新安全、可回环回滚，G1 门禁实测通过（COM IApplicationActivationManager 传参 --remote-debugging-port=9335 可行）；C 是官方支持通道（G2 实测仅影响原生窗口表面/背景，UI 内容不变色，故作辅）。代价：皮肤为运行时注入，会话内生效，用户自行启动 Codex 时只有原生 chrome 层，重跑 apply 即可（Non-Goal #5 语义一致）。
+
+**影响**：skins/codex 的 patch 引擎 = config.toml 段编辑器（官方层）+ CDP 注入器（主层）；新增依赖 ws（CDP WebSocket 客户端，精确版本）。
+
+---
+
+## D-026 — config.toml 补丁的最小写入原则
+
+**问题**：用户 config.toml 含大量个人键（模型、插件、项目、桌面外观偏好），皮肤只该碰外观色键。
+
+**选择**：行级段编辑——只改 [desktop.appearanceLight/DarkChromeTheme] 及其 .semanticColors 子段的颜色键（accent/ink/surface/diffAdded/diffRemoved/skill）；contrast/opaqueWindows/fonts/codeThemeId/appearanceTheme 等一律保留；段外字节零改动（CRLF/BOM 原样保留）。marker 幂等；.skin.bak 双重身份（回滚 + pristine，D-010 延伸）；--force 从 pristine 还原再打、备份污染即拒绝。
+
+**为什么**：对比度/不透明窗/字体是用户的材质偏好不是配色；最小写入保证还原语义精确（.bak 覆盖 = 完全还原）且不覆盖用户在应用内的任何设置。
+
+---
+
 ## 重新考虑的时机（汇总）
 
 - 如果加第 3 个 target（如 Cursor / Claude Code），评估是否抽共享 patch-asar 引擎（当前两套策略差异大，暂不统一）
@@ -403,3 +427,4 @@
 - 如果 `@electron/asar` 修复 unpacked 缺失 bug，QwenWork 可改 extract/repack
 - 如果立绘数量增加到 10+ 张，data URI 体积问题凸显时重议素材加载方式
 - 如果目标 app 升级改变了入口文件结构，更新 D-015 / D-008 对应的注入锚点
+- 如果 CDP 运行时注入成为多 target 模式（skins/codex 为第一例），评估抽取共享注入器（参考 D-025）

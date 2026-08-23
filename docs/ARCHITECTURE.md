@@ -345,12 +345,25 @@ CSS 选择器 html[data-skin] 命中
 - 临时目录 `os.tmpdir()/opencode-skin-patch-*`，finally 强制清理
 - 流程：备份 → extract → 注入 → 替换 favicon → repack → 校验 → 安装 → 重启
 
+### 10. skins/codex（官方 chrome 配置 + CDP 运行时注入）
+
+**职责**：Codex Desktop（MSIX，受保护目录）的换肤——不碰 app.asar。
+
+**为什么**：WindowsApps 只读且直启 exe 被应用容器拒绝，asar 内无 HTML 锚点（DECISIONS D-025）。
+
+**关键设计**：
+- 主通道：COM `IApplicationActivationManager` 激活传参（--remote-debugging-port）→ CDP WebSocket 注入（`--color-token-*` 变量映射 + 立绘 data URI + 保活）
+- 辅通道：config.toml `[desktop.appearance*ChromeTheme]` 颜色键（行级段编辑，段外字节零改动）
+- 交付物：dist/token-mapping.css（CDP 层）+ token-mapping.toml（官方层）+ codex-theme-v1 导入串（云端持久配色）
+- 注入共享：复用 skin-core 的 `buildBootstrapBody()`（data-skin setter + 立绘注入 + inject.js 保活），不重复实现
+
 ## 外部系统
 
 | 外部系统 | 关系 |
 |---|---|
 | QwenWorkCN Desktop | target，被 patch 的对象（二进制补丁） |
 | OpenCode Desktop | target，被 patch 的对象（extract/repack） |
+| Codex Desktop（MSIX） | target：官方 chrome 配置（config.toml 外观键）+ CDP 运行时注入（不碰受保护的 app.asar） |
 | 各 app 升级服务 | 会覆盖 `app.asar`，需用户手动重 patch |
 | macOS / Windows / Linux 文件系统 | `app.asar` 路径与进程管理各不同 |
 | Electron 默认 CSP | 阻止外部 URL，故用 data: URI 内联 |
