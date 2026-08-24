@@ -236,9 +236,15 @@ export function generateTokens(clusters: ColorCluster[], mode: 'light' | 'dark' 
   const darkest = neutral[0].color
   const neutralHue = rgbToHsl(lightest)[0]
   const neutralSaturation = Math.min(rgbToHsl(lightest)[1], 0.08)
+  const isDark = mode === 'dark'
   const neutralScale = Array.from({ length: 12 }, (_, i) => {
     const t = i / 11
-    const l = 0.97 - 0.91 * t // 0.97 → 0.06
+    // Mode-aware ranges: light mode spans near-white → medium-dark for
+    // light surfaces & dark text; dark mode spans near-white → near-black
+    // with a deeper floor so dark surfaces read as truly dark.
+    const l = isDark
+      ? 0.85 - 0.81 * t  // 0.85 → 0.04
+      : 0.97 - 0.82 * t  // 0.97 → 0.15
     return hslToRgb(neutralHue, neutralSaturation, l)
   })
 
@@ -251,27 +257,34 @@ export function generateTokens(clusters: ColorCluster[], mode: 'light' | 'dark' 
   }, chromatic[0]).color
   // Light: deeper brand so links/emphasis reach ≥4.5:1 on light surfaces.
   // Dark:  brighter brand so links/emphasis reach ≥4.5:1 on dark surfaces.
-  const isDark = mode === 'dark'
   const brandScale = generateScale(brandBase, 6, isDark ? [0.95, 0.32] : [0.88, 0.15])
 
   // ── Semantic colors ──
   const semantic = guessSemanticColors(chromatic)
 
-  // Fallback semantic colors if not found.
-  // Light mode: tuned so base colors reach ≥3:1 against a light surface.
-  // Dark mode: brightened so they stay ≥3:1 against a dark surface.
-  const successBase = semantic.success || hslToRgb(140 / 360, 0.65, isDark ? 0.55 : 0.33)
-  const warningBase = semantic.warning || hslToRgb(34 / 360, 1.0, isDark ? 0.58 : 0.34)
-  const criticalBase = semantic.critical || hslToRgb(0 / 360, 0.72, isDark ? 0.62 : 0.48)
-  const infoBase = semantic.info || brandBase
+  // Translate semantic base: preserve hue+saturation, adjust lightness for
+  // each mode so the base reads vivid against the mode's surface.
+  // Fallback: if no cluster matched the semantic role, synthesize one.
+  const translateBase = (raw: RGB | null, fallbackHue: number, fallbackSat: number) => {
+    const base = raw || hslToRgb(fallbackHue, fallbackSat, isDark ? 0.55 : 0.35)
+    const [h, s] = rgbToHsl(base)
+    return hslToRgb(h, s, isDark ? 0.55 : 0.4)
+  }
+  const successBase = translateBase(semantic.success, 140 / 360, 0.65)
+  const warningBase = translateBase(semantic.warning, 34 / 360, 1.0)
+  const criticalBase = translateBase(semantic.critical, 0 / 360, 0.72)
+  const infoBase = translateBase(semantic.info, rgbToHsl(brandBase)[0], Math.max(rgbToHsl(brandBase)[1], 0.5))
 
   // ── Accent ──
-  // Pick a secondary chromatic color different from brand
-  const accentBase =
+  // Pick a secondary chromatic color different from brand, then translate
+  // its lightness for the mode so it reads distinct against the surface.
+  const accentRaw =
     chromatic.find((c) => {
       const dist = Math.abs(rgbToHsl(c.color)[0] - rgbToHsl(brandBase)[0])
       return dist > 0.1
     })?.color || chromatic[Math.floor(chromatic.length / 2)].color
+  const [accentH, accentS] = rgbToHsl(accentRaw)
+  const accentBase = hslToRgb(accentH, accentS, isDark ? 0.7 : 0.85)
 
   // ── Build tokens ──
   const tokens: Tokens = {} as Tokens
@@ -329,7 +342,39 @@ export function generateTokens(clusters: ColorCluster[], mode: 'light' | 'dark' 
     tokens['info-strong'] = rgbToHex(adjustLightness(infoBase, 0.3))
   }
 
+  // ── Surface / border / input scale (brand-tinted) ──
+  // Instead of pure neutral grey, these tokens carry the brand hue at a
+  // meaningful fraction of the brand saturation so the UI feels thematic.
+  // Text stays neutral for readability; surfaces/borders carry the tint.
+  const [brandHue, brandSat] = rgbToHsl(brandBase)
+  const surfaceSat = brandSat * (isDark ? 0.18 : 0.15)
+  const borderSat = brandSat * (isDark ? 0.25 : 0.22)
+  const inputSat = brandSat * (isDark ? 0.15 : 0.12)
+
+  const surfaceScale = Array.from({ length: 12 }, (_, i) => {
+    const t = i / 11
+    const l = isDark
+      ? 0.85 - 0.81 * t  // 0.85 → 0.04
+      : 0.97 - 0.82 * t  // 0.97 → 0.15
+    return hslToRgb(brandHue, surfaceSat, l)
+  })
+  const borderScale = Array.from({ length: 12 }, (_, i) => {
+    const t = i / 11
+    const l = isDark
+      ? 0.85 - 0.81 * t
+      : 0.97 - 0.82 * t
+    return hslToRgb(brandHue, borderSat, l)
+  })
+  const inputScale = Array.from({ length: 12 }, (_, i) => {
+    const t = i / 11
+    const l = isDark
+      ? 0.85 - 0.81 * t
+      : 0.97 - 0.82 * t
+    return hslToRgb(brandHue, inputSat, l)
+  })
+
   // Text — light: dark text on light surface; dark: light text on dark surface.
+  // Keep text on the neutral scale (readability over thematic tint).
   if (isDark) {
     tokens['text-strong'] = rgbToHex(neutralScale[0])
     tokens['text-base'] = rgbToHex(neutralScale[1])
@@ -344,40 +389,39 @@ export function generateTokens(clusters: ColorCluster[], mode: 'light' | 'dark' 
     tokens['text-inverse'] = rgbToHex(neutralScale[0])
   }
 
-  // Surface — light: light surfaces; dark: dark surfaces.
+  // Surface — brand-tinted so surfaces carry the theme's warmth.
   if (isDark) {
-    tokens['surface-base'] = rgbToHex(neutralScale[10])
-    tokens['surface-raised'] = rgbToHex(neutralScale[9])
-    tokens['surface-strong'] = rgbToHex(neutralScale[0])
-    tokens['surface-weak'] = rgbToHex(neutralScale[8])
+    tokens['surface-base'] = rgbToHex(surfaceScale[10])
+    tokens['surface-raised'] = rgbToHex(surfaceScale[9])
+    tokens['surface-strong'] = rgbToHex(surfaceScale[0])
+    tokens['surface-weak'] = rgbToHex(surfaceScale[8])
   } else {
-    tokens['surface-base'] = rgbToHex(neutralScale[1])
-    tokens['surface-raised'] = rgbToHex(neutralScale[0])
-    tokens['surface-strong'] = rgbToHex(neutralScale[11])
-    tokens['surface-weak'] = rgbToHex(neutralScale[2])
+    tokens['surface-base'] = rgbToHex(surfaceScale[1])
+    tokens['surface-raised'] = rgbToHex(surfaceScale[0])
+    tokens['surface-strong'] = rgbToHex(surfaceScale[11])
+    tokens['surface-weak'] = rgbToHex(surfaceScale[2])
   }
 
-  // Border — UI component contrast requires ≥3:1, so borders sit on the
-  // darker half of the scale in light mode, brighter half in dark mode.
+  // Border — brand-tinted for thematic UI chrome.
   if (isDark) {
-    tokens['border-base'] = rgbToHex(neutralScale[5])
-    tokens['border-weak'] = rgbToHex(neutralScale[6])
-    tokens['border-strong'] = rgbToHex(neutralScale[4])
+    tokens['border-base'] = rgbToHex(borderScale[5])
+    tokens['border-weak'] = rgbToHex(borderScale[6])
+    tokens['border-strong'] = rgbToHex(borderScale[4])
     tokens['border-focus'] = rgbToHex(brandScale[2])
   } else {
-    tokens['border-base'] = rgbToHex(neutralScale[7])
-    tokens['border-weak'] = rgbToHex(neutralScale[6])
-    tokens['border-strong'] = rgbToHex(neutralScale[8])
+    tokens['border-base'] = rgbToHex(borderScale[7])
+    tokens['border-weak'] = rgbToHex(borderScale[6])
+    tokens['border-strong'] = rgbToHex(borderScale[8])
     tokens['border-focus'] = rgbToHex(brandScale[3])
   }
 
-  // Input
+  // Input — brand-tinted, slightly less than surface.
   if (isDark) {
-    tokens['input-base'] = rgbToHex(neutralScale[9])
-    tokens['input-active'] = rgbToHex(neutralScale[10])
+    tokens['input-base'] = rgbToHex(inputScale[9])
+    tokens['input-active'] = rgbToHex(inputScale[10])
   } else {
-    tokens['input-base'] = rgbToHex(neutralScale[0])
-    tokens['input-active'] = rgbToHex(neutralScale[1])
+    tokens['input-base'] = rgbToHex(inputScale[0])
+    tokens['input-active'] = rgbToHex(inputScale[1])
   }
 
   // Accent

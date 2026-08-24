@@ -101,11 +101,16 @@ const FOLLOW_DARK_SELECTOR = 'html[data-skin]:not([data-theme])'
 
 /** Build shared scale rules (brand + neutral, independent of theme). */
 function buildScaleRules(t: TokenPairs): MappingRule[] {
-  // Scales derive from the light set — neutral/brand scales are identical
-  // in both palettes (same clustering → same scales).
   const s = t.light
   const brand = generateScale(s['brand-600'], BRAND_LIGHTNESS)
-  const neutral = generateScale(s['neutral-500'], NEUTRAL_LIGHTNESS)
+  // Neutral scale carries the brand hue at a noticeable saturation — pure grey
+  // reads dead alongside the brand-tinted semantic surfaces/borders.
+  // Use ~30% of the brand saturation so the tint reads as thematic, not accidental.
+  const [brandHue, brandSat] = rgbToHsl(hexToRgb(s['brand-600']))
+  const neutralSat = brandSat * 0.30
+  const neutralTinted = NEUTRAL_LIGHTNESS.map((l) =>
+    rgbToHex(hslToRgb(brandHue, neutralSat, l)),
+  )
 
   const rules: MappingRule[] = []
 
@@ -113,7 +118,7 @@ function buildScaleRules(t: TokenPairs): MappingRule[] {
     rules.push({ target: `--brand-brand-${level}`, source: () => brand[i] })
   })
   NEUTRAL_LEVELS.forEach((level, i) => {
-    rules.push({ target: `--theme-neutral-neutral-${level}`, source: () => neutral[i] })
+    rules.push({ target: `--theme-neutral-neutral-${level}`, source: () => neutralTinted[i] })
   })
 
   return rules
