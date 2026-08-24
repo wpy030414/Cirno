@@ -130,7 +130,8 @@ function killApp(): void {
     }
     const start = Date.now()
     while (isAppRunning() && Date.now() - start < 5000) {
-      execSync('sleep 0.1', { stdio: 'pipe' })
+      // 100ms synchronous sleep — cross-platform (no shell dependency)
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100)
     }
     log('QwenWorkCN processes terminated')
   } catch {
@@ -253,14 +254,65 @@ function buildAsarHeaderBuf(headerJson: any): Buffer {
   return Buffer.concat([sizePickle, headerPickle])
 }
 
+/**
+ * Resolve the actual app.asar location on Windows.
+ * QwenWorkCN may install to `C:\Program Files\QwenWorkCN\<version>\resources\app.asar`
+ * (multi-version layout managed by Launcher/Updater) instead of the default AppData path.
+ * Reads `updater.cfg` from the install root to find the current version directory.
+ */
+function resolveWindowsAppDir(): string | undefined {
+  const programFilesDir = 'C:\\Program Files\\QwenWorkCN'
+  const updaterCfg = path.join(programFilesDir, 'updater.cfg')
+  if (fs.existsSync(updaterCfg)) {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(updaterCfg, 'utf8'))
+      if (cfg.currentVersion) {
+        const versionDir = path.join(programFilesDir, cfg.currentVersion)
+        if (fs.existsSync(path.join(versionDir, 'resources', 'app.asar'))) {
+          log(`Found QwenWorkCN via updater.cfg (version ${cfg.currentVersion})`)
+          return versionDir
+        }
+      }
+    } catch {
+      // fall through
+    }
+    // fallback: pick the latest version directory by name
+    try {
+      const entries = fs.readdirSync(programFilesDir)
+      const versions = entries
+        .filter((e) => /^\d+\.\d+/.test(e) && fs.statSync(path.join(programFilesDir, e)).isDirectory())
+        .sort()
+        .reverse()
+      for (const v of versions) {
+        const dir = path.join(programFilesDir, v)
+        if (fs.existsSync(path.join(dir, 'resources', 'app.asar'))) {
+          log(`Found QwenWorkCN at ${dir}`)
+          return dir
+        }
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return undefined
+}
+
+function resolveAppDir(platform: string): string {
+  // 1. Windows: check Program Files multi-version layout first
+  if (platform === 'win32') {
+    const winDir = resolveWindowsAppDir()
+    if (winDir) return winDir
+  }
+  // 2. Default path from table
+  const defaultDir = DEFAULT_APP_DIRS[platform]
+  if (!defaultDir) fail(`unsupported platform: ${platform}`)
+  return defaultDir
+}
+
 export async function patchAsar(options: PatchOptions = {}): Promise<void> {
   const platform = os.platform()
-  const defaultAppDir = DEFAULT_APP_DIRS[platform]
-  if (!defaultAppDir) {
-    fail(`unsupported platform: ${platform}`)
-  }
 
-  const appDir = options.appDir || defaultAppDir
+  const appDir = options.appDir || resolveAppDir(platform)
   const resourcesDir =
     platform === 'darwin'
       ? path.join(appDir, 'Contents', 'Resources')
@@ -511,13 +563,15 @@ export async function patchAsar(options: PatchOptions = {}): Promise<void> {
     throw err
   }
 
-  // Re-sign the app with ad-hoc signature after patching
-  log('re-signing app with ad-hoc signature...')
-  try {
-    execSync(`codesign --force --deep --sign - "${appDir}"`, { stdio: 'pipe' })
-    log('app re-signed successfully')
-  } catch (err) {
-    log(`warning: failed to re-sign app (you may need to sign manually): ${err}`)
+  // Re-sign the app with ad-hoc signature after patching (macOS only)
+  if (os.platform() === 'darwin') {
+    log('re-signing app with ad-hoc signature...')
+    try {
+      execSync(`codesign --force --deep --sign - "${appDir}"`, { stdio: 'pipe' })
+      log('app re-signed successfully')
+    } catch (err) {
+      log(`warning: failed to re-sign app (you may need to sign manually): ${err}`)
+    }
   }
 
   console.log('')
@@ -532,7 +586,11 @@ export async function patchAsar(options: PatchOptions = {}): Promise<void> {
 
   console.log('')
   console.log('To revert: close the app, then run:')
-  console.log(`  cp '${backupPath}' '${asarPath}'`)
+  if (os.platform() === 'win32') {
+    console.log(`  copy "${backupPath}" "${asarPath}"`)
+  } else {
+    console.log(`  cp '${backupPath}' '${asarPath}'`)
+  }
 }
 
 if (

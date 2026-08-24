@@ -16,10 +16,15 @@ async function main(): Promise<void> {
   const noBackup = args.includes('--no-backup')
   const allowRunning = args.includes('--allow-running')
 
+  // --app-dir <path>  overrides the auto-detected install directory
+  const appDirIdx = args.indexOf('--app-dir')
+  const appDir = appDirIdx !== -1 ? args[appDirIdx + 1] : undefined
+
   const options: Parameters<typeof patchAsar>[0] = {
     force,
     noBackup,
     allowRunning,
+    appDir,
   }
 
   await patchAsar(options)

@@ -123,7 +123,8 @@ function killOpenCode(): void {
     }
     const start = Date.now()
     while (isOpenCodeRunning() && Date.now() - start < 5000) {
-      execSync('sleep 0.1', { stdio: 'pipe' })
+      // 100ms synchronous sleep — cross-platform (no shell dependency)
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100)
     }
     log('OpenCode processes terminated')
   } catch {

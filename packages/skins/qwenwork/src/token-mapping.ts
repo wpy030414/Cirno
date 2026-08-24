@@ -7,6 +7,7 @@
 //   html[data-skin][data-theme="dark"...]  — dark semantic variables
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   hexToRgb,
   rgbToHex,
@@ -319,7 +320,10 @@ export function generateTokenMappingCSS(tokens: TokenPairs): string {
 }
 
 // CLI: read tokens.json, write token-mapping.css
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+) {
   const tokensPath = path.resolve('../../skin-core/dist/tokens.json')
   const outPath = path.resolve('dist/token-mapping.css')
 
