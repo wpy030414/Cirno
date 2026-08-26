@@ -145,13 +145,13 @@ function launchOpenCode(appDir: string): void {
 
   try {
     if (platform === 'win32') {
-      spawn(exePath, [], { detached: true, stdio: 'ignore' }).unref()
+      spawn(exePath, ['--enable-devtools'], { detached: true, stdio: 'ignore' }).unref()
     } else if (platform === 'darwin') {
-      spawn('open', ['-a', appDir], { detached: true, stdio: 'ignore' }).unref()
+      spawn('open', ['-a', appDir, '--args', '--enable-devtools'], { detached: true, stdio: 'ignore' }).unref()
     } else {
-      spawn(exePath, [], { detached: true, stdio: 'ignore' }).unref()
+      spawn(exePath, ['--enable-devtools'], { detached: true, stdio: 'ignore' }).unref()
     }
-    log('OpenCode launched')
+    log('OpenCode launched with DevTools enabled')
   } catch (err) {
     log(`Warning: Failed to launch OpenCode: ${err}`)
   }
