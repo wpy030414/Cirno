@@ -373,8 +373,46 @@ export async function patchAsar(options: PatchOptions = {}): Promise<void> {
   if (!fs.existsSync(injectJsPath)) throw new Error(`missing ${injectJsPath}`)
   const injectJs = fs.readFileSync(injectJsPath, 'utf8')
 
+  // Inject DevTools unlock code at the beginning
+  const devToolsUnlock = `
+// Auto-unlock DevTools for debugging
+(async () => {
+  try {
+    // Try multiple IPC methods that might exist
+    const ipcMethods = ['window:unlock-devtools', 'devtools:unlock', 'unlock-devtools'];
+    for (const method of ipcMethods) {
+      try {
+        if (window.electronAPI?.invoke) {
+          await window.electronAPI.invoke(method);
+          console.log('[Skin] DevTools unlocked via', method);
+          break;
+        }
+        if (window.ipcRenderer?.invoke) {
+          await window.ipcRenderer.invoke(method);
+          console.log('[Skin] DevTools unlocked via ipcRenderer', method);
+          break;
+        }
+      } catch (e) {
+        // Try next method
+      }
+    }
+
+    // Force open DevTools after a short delay
+    setTimeout(() => {
+      try {
+        if (window.electronAPI?.invoke) {
+          window.electronAPI.invoke('window:open-devtools');
+        }
+      } catch (e) {}
+    }, 1000);
+  } catch (e) {
+    console.warn('[Skin] DevTools unlock failed:', e);
+  }
+})();
+`
+
   const combinedCss = tokenMappingCss + '\n' + css
-  const bootstrap = await buildBootstrap({ css: combinedCss, injectJs, marker: MARKER })
+  const bootstrap = await buildBootstrap({ css: combinedCss, injectJs: devToolsUnlock + '\n' + injectJs, marker: MARKER })
 
   // ─── Binary patch the asar ─────────────────────────────────────────────
   // Always read from the pristine backup when --force, to avoid compounding patches.
@@ -508,6 +546,25 @@ export async function patchAsar(options: PatchOptions = {}): Promise<void> {
     }
     if (!watchdogPatched) {
       log('warning: OOM watchdog string not found in data section (may already be disabled)')
+    }
+
+    // 3b. 解锁 DevTools（_devToolsUnlocked=!1 → !0，等长替换）
+    const devtoolsOriginal = Buffer.from('_devToolsUnlocked=!1')
+    const devtoolsReplacement = Buffer.from('_devToolsUnlocked=!0')
+    if (devtoolsOriginal.length !== devtoolsReplacement.length) {
+      throw new Error('devtools patch replacement length mismatch')
+    }
+    let devtoolsPatched = false
+    for (let i = 0; i <= afterBuf.length - devtoolsOriginal.length; i++) {
+      if (afterBuf.subarray(i, i + devtoolsOriginal.length).equals(devtoolsOriginal)) {
+        devtoolsReplacement.copy(afterBuf, i)
+        devtoolsPatched = true
+        log('unlocked DevTools in main.js (_devToolsUnlocked=!1 → !0)')
+        break
+      }
+    }
+    if (!devtoolsPatched) {
+      log('warning: _devToolsUnlocked=!1 not found in data section (may already be patched)')
     }
 
     // 4. 分割 data section：HTML 之前 / HTML 之后
