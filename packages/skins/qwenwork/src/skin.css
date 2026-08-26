@@ -73,7 +73,7 @@ html[data-skin] button[aria-label="新任务"],
 html[data-skin] .flex-shrink-0:has([aria-label="QoderWork"]),
 html[data-skin] [data-homepage-recommended-prompts-slot],
 html[data-skin] div:has(> div > button[aria-label="Settings"]) > div:not(:last-of-type),
-html[data-skin] div:has(> nav[aria-label="消息导航"]) > [aria-hidden="true"] {
+html[data-skin] [style$="background: linear-gradient(to bottom, transparent 0%, color-mix(in srgb, var(--agents-fade-bg) 86%, transparent) 62%, var(--agents-fade-bg) 100%);"] {
   display: none;
 }
 

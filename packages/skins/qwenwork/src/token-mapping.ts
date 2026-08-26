@@ -78,6 +78,17 @@ function generateScale(seedHex: string, lightness: number[]): string[] {
   return lightness.map((l) => rgbToHex(hslToRgb(h, s, l)))
 }
 
+/** Blend two hex colors: ratio 0 = all a, 1 = all b. */
+function blendHex(a: string, b: string, ratio: number): string {
+  const ca = hexToRgb(a)
+  const cb = hexToRgb(b)
+  return rgbToHex([
+    Math.round(ca[0] * (1 - ratio) + cb[0] * ratio),
+    Math.round(ca[1] * (1 - ratio) + cb[1] * ratio),
+    Math.round(ca[2] * (1 - ratio) + cb[2] * ratio),
+  ])
+}
+
 // QwenWork theme selectors: light group and dark group.
 // NOTE: QwenWork's "follow system" mode sets NO data-theme attribute.
 // A bare `:not([data-theme])` would force the light palette even when the
@@ -140,6 +151,9 @@ function buildSemanticRules(t: TokenPairs, mode: ThemeMode): MappingRule[] {
   const rules: MappingRule[] = []
 
   // ── Semantic → --status-* (tokens already tuned per theme) ──
+  // Dark mode: info-link needs brightening for ≥4.5:1 on deep surfaces
+  const infoLink = mode === 'dark' ? () => blendHex(S('info-base'), '#ffffff', 0.30) : () => S('info-base')
+  const infoLinkStrong = mode === 'dark' ? () => blendHex(S('info-strong'), '#ffffff', 0.15) : () => S('info-strong')
   rules.push(
     { target: '--status-success', source: () => S('success-base') },
     { target: '--status-fill-success-container', source: () => S('success-weak') },
@@ -153,60 +167,80 @@ function buildSemanticRules(t: TokenPairs, mode: ThemeMode): MappingRule[] {
     { target: '--status-fill-error-container', source: () => S('critical-weak') },
     { target: '--status-fill-error-accent', source: () => S('critical-strong') },
     { target: '--status-text-error', source: () => S('critical-strong') },
-    { target: '--status-link', source: () => S('info-base') },
+    { target: '--status-link', source: infoLink },
     { target: '--status-fill-info-container', source: () => S('info-weak') },
-    { target: '--status-fill-info-accent', source: () => S('info-strong') },
-    { target: '--status-text-info-link', source: () => S('info-base') },
-    { target: '--status-text-info-link-hover', source: () => S('info-strong') },
-    { target: '--status-text-info-link-pressed', source: () => S('info-strong') },
+    { target: '--status-fill-info-accent', source: infoLinkStrong },
+    { target: '--status-text-info-link', source: infoLink },
+    { target: '--status-text-info-link-hover', source: infoLinkStrong },
+    { target: '--status-text-info-link-pressed', source: infoLinkStrong },
   )
 
   // ── Background → --bg-* ──
+  // Light: push surfaces toward white, with a whisper of brand hue.
+  // Dark: push surfaces toward black, with a whisper of brand hue.
+  const seed = t.light['brand-600']
+  const push = (key: keyof Tokens, whiteBlack: number, brand: number) => {
+    // First push toward white (#fff) or black (#000), then tint toward brand.
+    const pole = mode === 'light' ? '#ffffff' : '#000000'
+    return () => blendHex(blendHex(S(key), pole, whiteBlack), seed, brand)
+  }
   rules.push(
-    { target: '--bg-base-normal', source: () => S('surface-base') },
-    { target: '--bg-base-soft', source: () => S('surface-raised') },
-    { target: '--bg-base-strong', source: () => S('surface-strong') },
-    { target: '--bg-sidebar-normal', source: () => S('surface-weak') },
-    { target: '--bg-card-z0', source: () => S('surface-base') },
-    { target: '--bg-card-z1', source: () => S('surface-raised') },
-    { target: '--bg-pop', source: () => S('surface-raised') },
-    { target: '--bg-tooltips', source: () => S('surface-raised') },
-    { target: '--bg-page-mask', source: () => S('surface-strong') },
-    { target: '--bg-page-blur-mask', source: () => S('surface-strong') },
+    { target: '--bg-base-normal', source: push('surface-base', 0.40, 0.03) },
+    { target: '--bg-base-soft', source: push('surface-raised', 0.25, 0.02) },
+    { target: '--bg-base-strong', source: push('surface-strong', 0.05, 0.03) },
+    { target: '--bg-sidebar-normal', source: push('surface-weak', 0.30, 0.08) },
+    { target: '--bg-card-z0', source: push('surface-base', 0.40, 0.03) },
+    { target: '--bg-card-z1', source: push('surface-raised', 0.25, 0.02) },
+    // Tooltips/pop: white in light for max contrast, dark-tinted in dark
+    { target: '--bg-pop', source: () => mode === 'light' ? '#ffffff' : blendHex(blendHex(S('surface-raised'), '#000000', 0.25), seed, 0.02) },
+    { target: '--bg-tooltips', source: () => mode === 'light' ? '#ffffff' : blendHex(blendHex(S('surface-raised'), '#000000', 0.25), seed, 0.02) },
+    { target: '--bg-page-mask', source: push('surface-strong', 0.05, 0.03) },
+    { target: '--bg-page-blur-mask', source: push('surface-strong', 0.05, 0.03) },
   )
 
   // ── Text → --text-* ──
+  // Dark mode: push text colors toward white for better contrast on deep surfaces.
+  const textPushWhite = (key: keyof Tokens, ratio: number) =>
+    mode === 'dark' ? () => blendHex(S(key), '#ffffff', ratio) : () => S(key)
+  // inverted 文字：light 模式用浅色（深色 inverted 表面上），dark 模式用深色（浅色 inverted 表面上）
+  const invertedText = (lightVal: string, darkVal: string) =>
+    () => (mode === 'light' ? lightVal : darkVal)
   rules.push(
-    { target: '--text-base-primary', source: () => S('text-strong') },
-    { target: '--text-base-secondary', source: () => S('text-base') },
-    { target: '--text-base-tertiary', source: () => S('text-weak') },
-    { target: '--text-base-disable', source: () => S('text-weaker') },
-    // inverted 文字恒为浅色（放在深色/强调表面上），不跟随主题翻转
-    { target: '--text-inverted-primary', source: () => t.light['text-inverse'] },
-    { target: '--text-inverted-primary-bg', source: () => t.light['text-inverse'] },
-    { target: '--text-inverted-secondary', source: () => t.light['text-inverse'] },
-    { target: '--text-inverted-tertiary', source: () => t.light['text-inverse'] },
-    { target: '--text-inverted-disable', source: () => S('text-weaker') },
+    { target: '--text-base-primary', source: textPushWhite('text-strong', 0.10) },
+    { target: '--text-base-secondary', source: textPushWhite('text-base', 0.20) },
+    { target: '--text-base-tertiary', source: textPushWhite('text-weak', 0.20) },
+    { target: '--text-base-disable', source: () => mode === 'dark' ? blendHex(S('text-weaker'), '#ffffff', 0.25) : S('text-weaker') },
+    // inverted 文字：light=浅色(bg-card-inverted=#1A2A4D), dark=深色(bg-card-inverted=#E5EAF6)
+    { target: '--text-inverted-primary', source: invertedText(t.light['text-inverse'], '#262626') },
+    { target: '--text-inverted-primary-bg', source: invertedText(t.light['text-inverse'], '#262626') },
+    { target: '--text-inverted-secondary', source: invertedText(t.light['text-inverse'], '#393939') },
+    { target: '--text-inverted-tertiary', source: invertedText(t.light['text-inverse'], '#595959') },
+    { target: '--text-inverted-disable', source: invertedText(S('text-weaker'), '#858585') },
     { target: '--text-accent-primary', source: () => brandLink },
     { target: '--text-accent-normal', source: () => brandLink },
     { target: '--text-accent-hover', source: () => brandLinkHover },
     { target: '--text-accent-pressed', source: () => brandLinkHover },
   )
 
-  // ── Border → --border-* ──
+  // ── Border → --border-* (brand-tinted) ──
+  // Dark mode: 边框要更亮才能在深色表面上达到 3:1 UI 对比度
+  const borderPushWhite = (key: keyof Tokens, brandRatio: number, whiteRatio: number) =>
+    () => mode === 'dark'
+      ? blendHex(blendHex(S(key), seed, brandRatio), '#ffffff', whiteRatio)
+      : blendHex(S(key), seed, brandRatio)
   rules.push(
-    { target: '--border-theme', source: () => S('border-base') },
-    { target: '--border-theme-alpha', source: () => S('border-base') },
-    { target: '--border-theme-light', source: () => S('border-weak') },
-    { target: '--border-light', source: () => S('border-weak') },
-    { target: '--border-medium', source: () => S('border-strong') },
-    { target: '--border-strong', source: () => S('border-strong') },
+    { target: '--border-theme', source: borderPushWhite('border-base', 0.22, 0.12) },
+    { target: '--border-theme-alpha', source: borderPushWhite('border-base', 0.22, 0.12) },
+    { target: '--border-theme-light', source: borderPushWhite('border-weak', 0.18, 0.15) },
+    { target: '--border-light', source: borderPushWhite('border-weak', 0.18, 0.15) },
+    { target: '--border-medium', source: borderPushWhite('border-strong', 0.22, 0.08) },
+    { target: '--border-strong', source: borderPushWhite('border-strong', 0.22, 0.08) },
     { target: '--border-focus', source: () => S('border-focus') },
     { target: '--border-accent', source: () => S('brand-600') },
     { target: '--border-checkbox', source: () => S('brand-600') },
-    { target: '--border-divider-light', source: () => S('border-weak') },
-    { target: '--border-divider-medium', source: () => S('border-base') },
-    { target: '--border-shadow', source: () => S('border-weak') },
+    { target: '--border-divider-light', source: borderPushWhite('border-weak', 0.18, 0.15) },
+    { target: '--border-divider-medium', source: borderPushWhite('border-base', 0.22, 0.12) },
+    { target: '--border-shadow', source: borderPushWhite('border-weak', 0.18, 0.15) },
   )
 
   // ── Color fill → --color-fill-* ──
@@ -238,13 +272,16 @@ function buildSemanticRules(t: TokenPairs, mode: ThemeMode): MappingRule[] {
   )
 
   // ── Overlay → --overlay-* ──
+  // Dark mode: 选中/悬停用深色品牌背景 + 亮文字，不是浅色背景
+  const overlayBg = (lightKey: keyof Tokens, darkKey: keyof Tokens) =>
+    () => (mode === 'light' ? S(lightKey) : S(darkKey))
   rules.push(
-    { target: '--overlay-on-container-hover', source: () => S('brand-100') },
-    { target: '--overlay-on-container-pressed', source: () => S('brand-300') },
-    { target: '--overlay-on-container-selected', source: () => S('brand-100') },
-    { target: '--overlay-on-primary-black-hover', source: () => S('text-base') },
-    { target: '--overlay-on-primary-black-pressed', source: () => S('text-weak') },
-    { target: '--overlay-on-primary-black-selected', source: () => S('text-base') },
+    { target: '--overlay-on-container-hover', source: overlayBg('brand-100', 'brand-900') },
+    { target: '--overlay-on-container-pressed', source: overlayBg('brand-300', 'brand-700') },
+    { target: '--overlay-on-container-selected', source: overlayBg('brand-100', 'brand-900') },
+    { target: '--overlay-on-primary-black-hover', source: overlayBg('surface-weak', 'surface-raised') },
+    { target: '--overlay-on-primary-black-pressed', source: overlayBg('surface-weak', 'surface-raised') },
+    { target: '--overlay-on-primary-black-selected', source: overlayBg('surface-weak', 'surface-raised') },
   )
 
   // ── Accent ──
