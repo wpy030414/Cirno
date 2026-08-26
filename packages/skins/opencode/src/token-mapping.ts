@@ -24,7 +24,7 @@ interface MappingRule {
 type ThemeMode = 'light' | 'dark'
 
 /** Token pair produced by skin-core: both palettes, same schema. */
-type TokenPairs = {
+export type TokenPairs = {
   light: Tokens
   dark: Tokens
   /** 角色展示配置（offset/height 为 CSS 值字符串），build-tokens 从 manifest char-config 写入 */

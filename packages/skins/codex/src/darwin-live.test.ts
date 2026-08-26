@@ -98,7 +98,7 @@ function extractVarBlock(css: string, selector: string): Record<string, string> 
 
 test('live·CDP 运行时映射扫掠：注入后的 --color-token-* 计算值与 token-mapping.css 逐项一致', { skip: !isDarwin }, async (t) => {
   if (!fs.existsSync(MAPPING_CSS)) {
-    t.skip('dist/token-mapping.css 不存在——先运行 pnpm build-mapping:codex')
+    t.skip('dist/token-mapping.css 不存在——先运行 pnpm apply:codex')
     return
   }
   let page

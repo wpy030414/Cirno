@@ -85,7 +85,7 @@ packages/skin-assets/
 
 **colorSource（取色来源）**：显式声明哪些图喂给取色管线。条目可以是**角色 key**（旧契约）或**主题目录内文件名**（新用法），两种写法等价。**只从角色立绘采样，场景背景不参与取色**——宫殿昼夜图会污染主题色调（蓝色调会覆盖整个主题）。变更取色来源改 manifest，不改代码。
 
-**char-config（角色展示配置，可选）**：键为角色 key，每角色可配 `offset`（[x, y] **CSS 值字符串**：x = 距边缘——左角色距左、右角色距右；y = 距底，默认 `["0%", "0%"]`，可为负——负值让立绘探出视窗，如半身像）与 `height`（**CSS 值字符串**，默认 `"86%"`，如 `"80vh"`）。build-tokens 读入并写入 tokens.json，build-mapping 据此生成 `--character-*-height` / `--character-*-position` CSS 变量（offset 值原样透传进 `calc(100% - <value>)`），skin.css 的 `background-size` / `background-position` 以 `var()` 消费——**调角色位置/高度只改 manifest，不动 CSS**。
+**char-config（角色展示配置，可选）**：键为角色 key，每角色可配 `offset`（[x, y] **CSS 值字符串**：x = 距边缘——左角色距左、右角色距右；y = 距底，默认 `["0%", "0%"]`，可为负——负值让立绘探出视窗，如半身像）与 `height`（**CSS 值字符串**，默认 `"86%"`，如 `"80vh"`）。build-tokens 读入并写入 tokens.json，apply 时据此生成 `--character-*-height` / `--character-*-position` CSS 变量（offset 值原样透传进 `calc(100% - <value>)`），skin.css 的 `background-size` / `background-position` 以 `var()` 消费——**调角色位置/高度只改 manifest，不动 CSS**。
 
 **主题选择**：**只有 build-tokens 选择主题**——`selectTheme()` 交互式选择（TTY 编号菜单）或报错列出可用主题（非 TTY），指定方式为 `--theme <name>` 参数或 `SKIN_THEME` 环境变量。选定主题写入 `dist/tokens.json` 顶层 `theme` 字段，**preview / apply 等其他模块不选择主题**，一律经 `getActiveTheme()` 跟随该字段。
 
@@ -157,17 +157,14 @@ light / dark 两套：
      ↓
    dist/tokens.json（顶层 theme 字段 = 活动主题）
      ↓
-2. pnpm build-mapping:<target>
-   skins/<target>/token-mapping.ts: tokens.json → dist/token-mapping.css
-   （共享色阶块 + light 语义块 + dark 语义块）
-     ↓
-3. pnpm apply:<target>（不选主题——getActiveTheme() 跟随 tokens.json 的活动主题）
-   skins/<target>/patch-asar.ts:
-   token-mapping.css + skin.css → buildBootstrap()
-   + 活动主题的 4 张立绘 → data URI → buildImageInjectionScript()
-   + inject.js
-   → 注入到目标 app 的 out/renderer/index.html（</head> 之前）
-   → 重打包 / 二进制补丁 → 校验 marker → 安装 → 重启
+2. pnpm apply:<target>（不选主题——getActiveTheme() 跟随 tokens.json 的活动主题）
+   skins/<target>/index.ts:
+     a. 读 tokens.json → generateTokenMappingCSS() → 写 dist/token-mapping.css
+     b. patch-asar: token-mapping.css + skin.css → buildBootstrap()
+        + 活动主题的 4 张立绘 → data URI → buildImageInjectionScript()
+        + inject.js
+        → 注入到目标 app 的 out/renderer/index.html（</head> 之前）
+        → 重打包 / 二进制补丁 → 校验 marker → 安装 → 重启
 ```
 
 ### 运行时
@@ -388,13 +385,11 @@ CSS 选择器 html[data-skin] 命中
 | 命令 | 作用 |
 |---|---|
 | `pnpm build-tokens --theme <name>` | 从选中主题的 colorSource 图提取颜色，生成 light+dark 双套 46 tokens（未指定主题则交互选择；主题唯一选择点） |
-| `pnpm build-mapping:qwenwork` | qwenwork 读取 tokens，生成 token-mapping.css |
-| `pnpm build-mapping:opencode` | opencode 读取 tokens，生成 token-mapping.css |
 | `pnpm preview` | 生成 palette.html 可视化预览（簇 + light/dark 双套 token） |
-| `pnpm apply:qwenwork` | 给 QwenWorkCN Desktop 打补丁（二进制） |
-| `pnpm apply:opencode` | 给 OpenCode Desktop 打补丁（extract/repack） |
-| `pnpm dev:qwenwork` | 关闭 QwenWorkCN，带 `--enable-devtools` 重启 |
-| `pnpm dev:opencode` | 关闭 OpenCode，带 `--enable-devtools` 重启 |
+| `pnpm apply:qwenwork` | 生成 token-mapping.css + 给 QwenWorkCN Desktop 打补丁（二进制） |
+| `pnpm apply:opencode` | 生成 token-mapping.css + 给 OpenCode Desktop 打补丁（extract/repack） |
+| `pnpm apply:codex` | 生成 dist 产物（CSS + TOML + 导入串）+ 给 Codex Desktop 换肤（config 通道 + CDP 注入） |
+| 各 skin 包内 `pnpm dev` | kill + 带 DevTools/CDP 重启（dev 脚本在子项目 package.json 里，不在顶层） |
 
 ## 典型工作流
 
@@ -408,17 +403,14 @@ CSS 选择器 html[data-skin] 命中
 3. pnpm preview                        ← 跟随活动主题，不选主题
    → 浏览器检查取色结果（可选）
    ↓
-4. pnpm build-mapping:<target>
-   → 各 skin 包生成 token-mapping.css
-   ↓
-5. 调整 skin.css（如果需要）
+4. 调整 skin.css（如果需要）
    → 手写组件样式
    ↓
-6. pnpm apply:<target>                 ← 跟随活动主题，不选主题
+5. pnpm apply:<target>                 ← 跟随活动主题，不选主题；内部自动生成 token-mapping
    → patch-asar 注入到 app.asar（自动备份 + 重启）
    ↓
-7. pnpm dev:<target>
-   → 带 DevTools 重启，DevTools 里检查选择器 / 调样式
+6. cd packages/skins/<target> && pnpm dev
+   → 各 skin 包内的 dev 启动器（kill + 带 DevTools/CDP 重启）
 ```
 
-切换主题 = 重跑 `pnpm build-tokens --theme <name>`（更新活动主题）→ build-mapping → apply。
+切换主题 = 重跑 `pnpm build-tokens --theme <name>`（更新活动主题）→ apply。

@@ -8,7 +8,7 @@
 
 ## 行为应该是什么
 
-运行 `pnpm --filter @skins/qwenwork build-mapping`（`tsx src/token-mapping.ts`）时：
+运行 `pnpm apply:qwenwork`（内部调用 `generateTokenMappingCSS()`）时：
 
 1. 读取 `../../skin-core/dist/tokens.json`（不存在报错，提示先跑 build-tokens）
 2. 生成三段 CSS：
@@ -79,9 +79,9 @@ buildSemanticRules(t, mode): 语义（light/dark 各 ~110 条）
 
 - [x] 生成 CSS 三段 + 两条媒体查询，选择器全部 scoped 在 `html[data-skin]` 下
 - [x] light / dark / 跟随系统三种模式配色正确（28 项对比度全绿）
-- [x] 换 tokens.json 重新 build-mapping 后皮肤颜色整体跟着变（不硬编码）
+- [x] 换 tokens.json 重新 apply 后皮肤颜色整体跟着变（不硬编码）
 - [x] 控制台输出映射条数（236）
 
 ## 如何判断任务已经完成
 
-`pnpm build-mapping:qwenwork` 输出 token-mapping.css；apply 后 QwenWork 三模式（亮/暗/跟随系统）视觉一致达标。
+`pnpm apply:qwenwork` 内部生成 token-mapping.css；apply 后 QwenWork 三模式（亮/暗/跟随系统）视觉一致达标。

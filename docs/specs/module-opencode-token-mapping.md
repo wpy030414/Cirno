@@ -8,7 +8,7 @@
 
 ## 行为应该是什么
 
-运行 `pnpm --filter @skins/opencode build-mapping`（`tsx src/token-mapping.ts`）时：
+运行 `pnpm apply:opencode`（内部调用 `generateTokenMappingCSS()`）时：
 
 1. 读取 `../../skin-core/dist/tokens.json`（不存在报错，提示先跑 build-tokens）
 2. 生成三段 CSS：
@@ -89,10 +89,10 @@ buildSemanticRules(t, mode): 语义（light/dark 各 ~130 条）
 
 - [x] 生成 CSS 三段，选择器全部 scoped 在 `html[data-skin]` 下
 - [x] light / dark 配色正确（28 项对比度全绿，含 diff/语法色语义正确）
-- [x] 换 tokens.json 重新 build-mapping 后皮肤颜色整体跟着变
+- [x] 换 tokens.json 重新 apply 后皮肤颜色整体跟着变
 - [x] legacy 别名与 v2 变量同时覆盖（新旧版本 OpenCode 都生效）
 - [x] 控制台输出映射条数（491）
 
 ## 如何判断任务已经完成
 
-`pnpm build-mapping:opencode` 输出 token-mapping.css；apply 后 OpenCode 亮/暗主题视觉一致达标。
+`pnpm apply:opencode` 内部生成 token-mapping.css；apply 后 OpenCode 亮/暗主题视觉一致达标。

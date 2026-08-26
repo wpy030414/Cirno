@@ -31,10 +31,7 @@ pnpm build-tokens --theme maid-atelier
 # 2. 预览取色结果
 pnpm preview
 
-# 3. 生成各 skin 的 token 映射 CSS
-pnpm build-mapping:qwenwork
-
-# 4. 给 QwenWork 打皮肤补丁（自动备份 + 重启，跟随 build-tokens 选定的主题）
+# 3. 给 QwenWork 打皮肤补丁（自动生成 token 映射 + 补丁，跟随 build-tokens 选定的主题）
 pnpm apply:qwenwork
 ```
 
@@ -46,15 +43,10 @@ pnpm apply:qwenwork
 |---|---|
 | `pnpm build-tokens` | **主题唯一选择点**：从选中主题的 colorSource 图提取颜色，生成 light+dark 双套 tokens.json（未指定主题则终端交互选择） |
 | `pnpm preview` | 生成 palette.html 可视化预览（簇 + 双套 token，跟随活动主题） |
-| `pnpm dev:qwenwork` | 关闭 QwenWorkCN，带 `--enable-devtools` 重启 |
-| `pnpm build-mapping:qwenwork` | 读取 tokens，生成 `dist/token-mapping.css` |
-| `pnpm apply:qwenwork` | 给 QwenWorkCN Desktop 打补丁（二进制补丁策略，跟随活动主题） |
-| `pnpm dev:opencode` | 关闭 OpenCode，带 `--enable-devtools` 重启 |
-| `pnpm build-mapping:opencode` | 读取 tokens，生成 `dist/token-mapping.css` |
-| `pnpm apply:opencode` | 给 OpenCode Desktop 打补丁（extract/repack 策略，跟随活动主题） |
-| `pnpm dev:codex` | 关闭 Codex Desktop，带 CDP 调试端口重启并注入皮肤（等价 apply:codex） |
-| `pnpm build-mapping:codex` | 读取 tokens，生成 token-mapping.css（CDP 层）+ token-mapping.toml（官方 chrome 层）+ 官方导入串 |
-| `pnpm apply:codex` | 给 Codex Desktop 换肤（官方 config 通道 + CDP 运行时注入，跟随活动主题；`--pin light\|dark` 仅测试，`--restore` 还原） |
+| `pnpm apply:qwenwork` | 生成 token 映射 CSS + 给 QwenWorkCN Desktop 打补丁（二进制补丁策略，跟随活动主题） |
+| `pnpm apply:opencode` | 生成 token 映射 CSS + 给 OpenCode Desktop 打补丁（extract/repack 策略，跟随活动主题） |
+| `pnpm apply:codex` | 生成 token 映射（CSS + TOML + 导入串）+ 给 Codex Desktop 换肤（官方 config 通道 + CDP 运行时注入，跟随活动主题；`--pin light\|dark` 仅测试，`--restore` 还原） |
+| `cd packages/skins/<target> && pnpm dev` | 各 skin 包内的 dev 启动器（kill + 带 DevTools/CDP 重启），只在子项目 package.json 里 |
 
 主题选择：**只在 build-tokens**——`--theme <name>` 参数 > `SKIN_THEME` 环境变量 > 终端交互选择；选定主题写入 `dist/tokens.json`，preview / apply 自动跟随。可用主题 = `packages/skin-assets/` 下 `<name>.theme/` 目录。切换主题 = `pnpm build-tokens --theme <name>` 后重跑 apply。
 

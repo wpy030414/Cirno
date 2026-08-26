@@ -41,7 +41,7 @@
 }
 ```
 
-顶层 `theme` = 活动主题（preview / apply 跟随读取；`--sources` 显式指定时无此字段）。顶层 `char-config` = 角色展示配置（offset 距边/距底 + 高度，均为 CSS 值字符串），取自 manifest 同名字段、补全为完整两角色配置（缺省：offset `["0%", "0%"]`、height `"86%"`）；供 build-mapping 生成 `--character-*-height` / `--character-*-position` CSS 变量。
+顶层 `theme` = 活动主题（preview / apply 跟随读取；`--sources` 显式指定时无此字段）。顶层 `char-config` = 角色展示配置（offset 距边/距底 + 高度，均为 CSS 值字符串），取自 manifest 同名字段、补全为完整两角色配置（缺省：offset `["0%", "0%"]`、height `"86%"`）；供 apply 时生成 `--character-*-height` / `--character-*-position` CSS 变量。
 
 **46 个 key**（`TOKEN_KEYS`，缺一不可）：
 - neutral-50 ~ neutral-1100（12）

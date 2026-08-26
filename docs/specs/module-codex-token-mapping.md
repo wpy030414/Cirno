@@ -26,7 +26,7 @@
 
 ## 验收标准
 
-- [x] `pnpm build-mapping:codex` 生成三个产物（css 共享 6 + light 117 + dark 117 = 240 条映射；含 --oai-wb-*/composer/mermaid/vscode/referral 等全家族）
+- [x] `pnpm apply:codex` 自动生成三个产物（css 共享 6 + light 117 + dark 117 = 240 条映射；含 --oai-wb-*/composer/mermaid/vscode/referral 等全家族）
 - [x] 弹层表面分档修正：dropdown/menu/checkbox/editor-widget 不再误用反色 surface-strong（白对话框根除，亮度方向回归断言兜底）
 - [x] 三段选择器结构与 electron-light/electron-dark 主题类实测一致
 - [x] 全部映射值合法（6/8 位 hex 或 var()/calc），无 undefined

@@ -66,7 +66,7 @@ export async function buildTokens(options: BuildOptions): Promise<{ light: Recor
       fs.mkdirSync(dir, { recursive: true })
     }
     // 活动主题记录在 tokens.json 顶层 theme 字段——preview / apply 跟随读取；
-    // 角色展示配置（char-config）同样写顶层，供 build-mapping 生成 CSS 变量
+    // 角色展示配置（char-config）同样写顶层，供 apply 时生成 CSS 变量
     const out: Record<string, unknown> = {
       'char-config': {
         'character-left': {

@@ -64,10 +64,10 @@ theme 发现规则：`skin-assets/` 下以 `.theme` 结尾的目录且内含 `ma
 场景背景（day/night）不得参与取色（会绑架主题色调）。变更取色来源只改 manifest，不改代码。
 
 **char-config（角色展示配置，可选）**：键为角色 key（`character-left` / `character-right`），每个角色可配：
-- `offset: [x, y]`（**CSS 值字符串二元组**，默认 `["0%", "0%"]`，如 `["-30px", "-20%"]`）——`x` = 距边缘（左角色距左、右角色距右），`y` = 距底；值原样透传进 `calc(100% - <value>)`，支持任意 CSS 长度/百分比（负值让立绘探出视窗，如半身像）。build-mapping 生成 `--character-*-position` CSS 变量（左角色 `x calc(100% - y)`、右角色 `calc(100% - x) calc(100% - y)`）
+- `offset: [x, y]`（**CSS 值字符串二元组**，默认 `["0%", "0%"]`，如 `["-30px", "-20%"]`）——`x` = 距边缘（左角色距左、右角色距右），`y` = 距底；值原样透传进 `calc(100% - <value>)`，支持任意 CSS 长度/百分比（负值让立绘探出视窗，如半身像）。apply 时生成 `--character-*-position` CSS 变量（左角色 `x calc(100% - y)`、右角色 `calc(100% - x) calc(100% - y)`）
 - `height`（**CSS 值字符串**，默认 `"86%"`，如 `"80vh"`）——立绘高度，生成 `--character-*-height` CSS 变量
 
-未列出的角色与未配字段用默认值。build-tokens 读取后写入 tokens.json 顶层 `char-config`（补全为完整两角色配置），build-mapping 据此生成 CSS 变量，skin.css 以 `var()` 消费。校验：`offset` 必须为两个非空字符串，`height` 必须为非空字符串，非法值报错。
+未列出的角色与未配字段用默认值。build-tokens 读取后写入 tokens.json 顶层 `char-config`（补全为完整两角色配置），apply 时据此生成 CSS 变量，skin.css 以 `var()` 消费。校验：`offset` 必须为两个非空字符串，`height` 必须为非空字符串，非法值报错。
 
 ## 加载器 API（assets-loader.ts）
 

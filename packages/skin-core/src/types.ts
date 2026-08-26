@@ -97,7 +97,7 @@ export interface BuildOptions {
    * 角色展示配置（键为 character-left / character-right，字段可选，缺省用默认值：
    * offset ["0%", "0%"]、height "86%"；均为 CSS 值字符串）。
    * 写入 tokens.json 的 char-config 字段，
-   * 供 build-mapping 生成 --character-*-height / --character-*-position CSS 变量。
+   * 供 apply 时生成 --character-*-height / --character-*-position CSS 变量。
    */
   charConfig?: Partial<
     Record<'character-left' | 'character-right', { offset?: [string, string]; height?: string }>

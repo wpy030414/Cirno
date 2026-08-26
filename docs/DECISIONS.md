@@ -117,7 +117,7 @@
 - B 的缺点：要手动 kill + apply + open
 - C 的优点：一键重启 + 自动开 DevTools，调试 CSS 最爽
 
-**影响**：写了 `scripts/dev-qwenwork.mjs` / `dev-opencode.mjs`（kill + open --enable-devtools）
+**影响**：写了各 skin 包的 `scripts/dev.mjs`（kill + open --enable-devtools），放在子项目 package.json 里
 
 ---
 

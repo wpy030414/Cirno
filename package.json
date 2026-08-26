@@ -5,15 +5,9 @@
   "scripts": {
     "build-tokens": "pnpm --filter @skins/core build",
     "preview": "pnpm --filter @skins/core preview",
-    "dev:qwenwork": "node scripts/dev-qwenwork.mjs",
-    "build-mapping:qwenwork": "pnpm --filter @skins/qwenwork build-mapping",
-    "apply:qwenwork": "pnpm --filter @skins/qwenwork apply",
-    "dev:opencode": "node scripts/dev-opencode.mjs",
-    "build-mapping:opencode": "pnpm --filter @skins/opencode build-mapping",
+    "apply:codex": "pnpm --filter @skins/codex apply",
     "apply:opencode": "pnpm --filter @skins/opencode apply",
-    "dev:codex": "node scripts/dev-codex.mjs",
-    "build-mapping:codex": "pnpm --filter @skins/codex build-mapping",
-    "apply:codex": "pnpm --filter @skins/codex apply"
+    "apply:qwenwork": "pnpm --filter @skins/qwenwork apply"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

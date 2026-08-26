@@ -10,6 +10,9 @@ import { getActiveTheme } from '@skins/core/assets-loader'
 import { buildBootstrapBody } from '@skins/core/bootstrap-builder'
 import {
   generateChromeThemeColors,
+  generateChromeThemeToml,
+  generateTokenMappingCSS,
+  generateThemeV1String,
   type TokenPairs,
 } from './token-mapping.js'
 import { patchConfigFile, restoreConfigFile } from './patch-config.js'
@@ -69,17 +72,23 @@ async function main(): Promise<void> {
   }
   const tokens = JSON.parse(fs.readFileSync(tokensPath, 'utf8')) as TokenPairs
 
-  // 2) 映射产物（build-mapping:codex 生成）
-  const mappingCssPath = path.resolve(__dirname, '../dist/token-mapping.css')
-  if (!fs.existsSync(mappingCssPath)) {
-    throw new Error("dist/token-mapping.css not found — run 'pnpm build-mapping:codex' first")
-  }
-  const mappingCss = fs.readFileSync(mappingCssPath, 'utf8')
+  // 2) 生成映射产物（CSS + TOML + 官方导入串）—— 原 build-mapping 步骤，现内联
+  const distDir = path.resolve(__dirname, '../dist')
+  fs.mkdirSync(distDir, { recursive: true })
+
+  const mappingCss = generateTokenMappingCSS(tokens)
+  fs.writeFileSync(path.join(distDir, 'token-mapping.css'), mappingCss)
+
+  const chromeColors = generateChromeThemeColors(tokens)
+  fs.writeFileSync(path.join(distDir, 'token-mapping.toml'), generateChromeThemeToml(tokens))
+  fs.writeFileSync(path.join(distDir, 'codex-theme-v1-light.txt'), generateThemeV1String(tokens, 'light'))
+  fs.writeFileSync(path.join(distDir, 'codex-theme-v1-dark.txt'), generateThemeV1String(tokens, 'dark'))
+
+  console.log('✓ Generated dist/token-mapping.css + token-mapping.toml + theme import strings')
   const skinCss = fs.readFileSync(path.resolve(__dirname, './skin.css'), 'utf8')
   const injectJs = fs.readFileSync(path.resolve(__dirname, '../../../skin-core/src/inject.js'), 'utf8')
 
   // 3) 官方 chrome 层（config.toml；只写颜色键，其余用户键保留）
-  const chromeColors = generateChromeThemeColors(tokens)
   console.log('')
   console.log('🎨 Patching config.toml chromeTheme (light+dark color keys)...')
   const result = patchConfigFile(configPath, chromeColors.light, chromeColors.dark, { force, noBackup, pin })

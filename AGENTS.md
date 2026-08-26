@@ -106,13 +106,11 @@ skin-assets 可容纳多个 `<name>.theme/` 目录。**主题选择只发生在 
 
 1. `pnpm install` → 无报错
 2. `pnpm build-tokens --theme maid-atelier` → 输出 `dist/tokens.json`，包含 light/dark 各 46 个 token
-3. `pnpm build-mapping:qwenwork` + `pnpm build-mapping:opencode` → 两个 skin 包都生成 `dist/token-mapping.css`
-4. `pnpm preview` → 生成 `dist/palette.html`，浏览器打开看可视化
-5. `pnpm apply:qwenwork` → QwenWorkCN 重启带皮肤，`app.asar.skin.bak` 生成
-6. `pnpm dev:qwenwork` → QwenWorkCN 重启 + `Option+Cmd+I` 能开 DevTools
-7. `pnpm apply:opencode` → OpenCode 重启带皮肤
-8. `pnpm build-mapping:codex` → 生成 dist/token-mapping.css + token-mapping.toml + 官方导入串
-9. `pnpm apply:codex` → Codex Desktop 经 COM 激活重启（--remote-debugging-port=9335）并注入皮肤（会话内生效，重启后需重跑 apply）
-10. `pnpm apply:codex --pin light|dark`（仅测试）→ 明/暗切换验证；`pnpm apply:codex --restore` → 还原 config.toml 并重启原生
-11. 亮/暗主题切换正常（qwenwork 含 follow-system 模式）
-12. 还原：`.bak` 覆盖回 `app.asar` 后界面完全恢复原生
+3. `pnpm preview` → 生成 `dist/palette.html`，浏览器打开看可视化
+4. `pnpm apply:qwenwork` → 自动生成 token-mapping.css + QwenWorkCN 重启带皮肤，`app.asar.skin.bak` 生成
+5. 进入 `packages/skins/qwenwork` 跑 `pnpm dev` → QwenWorkCN 重启 + `Option+Cmd+I` 能开 DevTools
+6. `pnpm apply:opencode` → 自动生成 token-mapping.css + OpenCode 重启带皮肤
+7. `pnpm apply:codex` → 自动生成 dist 产物（CSS + TOML + 导入串）+ Codex Desktop 经 COM 激活重启（--remote-debugging-port=9335）并注入皮肤（会话内生效，重启后需重跑 apply）
+8. `pnpm apply:codex --pin light|dark`（仅测试）→ 明/暗切换验证；`pnpm apply:codex --restore` → 还原 config.toml 并重启原生
+9. 亮/暗主题切换正常（qwenwork 含 follow-system 模式）
+10. 还原：`.bak` 覆盖回 `app.asar` 后界面完全恢复原生

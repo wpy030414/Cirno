@@ -50,7 +50,7 @@ interface Manifest {
    * 角色展示配置（可选）。键为角色 key（character-left / character-right），
    * 每个角色可配 offset（[x, y] CSS 值字符串，距边/距底）与 height（CSS 值），
    * 未列出的角色与未配字段用默认值。由 build-tokens 写入 tokens.json，
-   * 供 build-mapping 生成 --character-*-height / --character-*-position CSS 变量。
+   * 供 apply 时生成 --character-*-height / --character-*-position CSS 变量。
    */
   'char-config'?: Partial<Record<StandardRole, CharConfig>>
 }
