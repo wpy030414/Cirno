@@ -1,22 +1,22 @@
 #!/usr/bin/env node
-// dev-qwenwork.mjs
-// 关闭 QwenWorkCN，带 --enable-devtools 重启（调试用）
+// dev.mjs
+// 关闭 OpenCode，带 --enable-devtools 重启（调试用）
 
 import { execSync, spawn } from 'node:child_process'
 
-const APP_DIR = '/Applications/QwenWorkCN.app'
-const PROCESS_NAME = 'QwenWorkCN'
+const APP_DIR = '/Applications/OpenCode.app'
+const PROCESS_NAME = 'OpenCode'
 
-console.log('🔧 QwenWork Dev Launcher')
+console.log('🔧 OpenCode Dev Launcher')
 console.log('========================\n')
 
 // 1. Kill
-console.log('[dev] killing QwenWorkCN processes...')
+console.log('[dev] killing OpenCode processes...')
 try {
   execSync(`pkill -f ${PROCESS_NAME}`, { stdio: 'pipe' })
   console.log('[dev] pkill sent')
 } catch {
-  console.log('[dev] no QwenWorkCN process found')
+  console.log('[dev] no OpenCode process found')
 }
 
 // 2. Wait for exit
@@ -39,5 +39,5 @@ spawn('open', ['-a', APP_DIR, '--args', '--enable-devtools'], {
   stdio: 'ignore'
 }).unref()
 
-console.log('[dev] ✓ QwenWorkCN restarted with DevTools enabled')
+console.log('[dev] ✓ OpenCode restarted with DevTools enabled')
 console.log('[dev] press Option+Cmd+I to open DevTools')

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// dev-codex.mjs
-// 关闭 Codex Desktop，带 CDP 调试端口重启并注入皮肤（等价于 pnpm apply:codex），
-// 完成后提示 DevTools 访问方式。前提：pnpm build-tokens 与 pnpm build-mapping:codex 已跑过。
+// dev.mjs
+// 关闭 Codex Desktop，带 CDP 调试端口重启并注入皮肤（等价于 pnpm apply），
+// 完成后提示 DevTools 访问方式。前提：pnpm build-tokens 已跑过。
 import { spawnSync } from 'node:child_process'
 
 console.log('🔧 Codex Dev Launcher (apply + CDP)')
 console.log('===================================')
 
-const r = spawnSync('pnpm', ['--filter', '@skins/codex', 'apply'], {
+const r = spawnSync('pnpm', ['apply'], {
   stdio: 'inherit',
   shell: false,
 })

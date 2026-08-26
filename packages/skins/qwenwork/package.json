@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "apply": "tsx src/index.ts",
-    "build-css": "tsx src/build-css.ts",
-    "build-mapping": "tsx src/token-mapping.ts"
+    "dev": "node scripts/dev.mjs",
+    "build-css": "tsx src/build-css.ts"
   },
   "dependencies": {
     "@skins/core": "workspace:*"
