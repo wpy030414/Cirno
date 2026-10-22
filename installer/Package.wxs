@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cirno 安装包。按用户安装（%LOCALAPPDATA%\Programs\Cirno），不需要管理员权限。
+  卸载默认保留用户数据（%LOCALAPPDATA%\Cirno）；需要彻底清除时手工删除该目录。
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <Package
+    Name="Cirno"
+    Manufacturer="Cirno"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="7d2f5d1e-9b6a-4f43-8c1d-3a5e9f2b6c48"
+    Scope="perUser"
+    Compressed="yes">
+
+    <SummaryInformation
+      Description="Cirno — Windows 原生 Agent 座舱"
+      Manufacturer="Cirno" />
+
+    <MajorUpgrade DowngradeErrorMessage="已安装更高版本的 Cirno，请先在「应用和功能」里卸载。" />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- 图标直接从 exe 提取，避免维护两份资源 -->
+    <Icon Id="CirnoIcon" SourceFile="$(var.PublishDir)\Cirno.exe" />
+    <Property Id="ARPPRODUCTICON" Value="CirnoIcon" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="Cirno" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppMenuFolder" Name="Cirno" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="Cirno" Level="1" AllowAbsent="no">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <Component Id="StartMenuShortcut" Directory="AppMenuFolder" Guid="*">
+      <Shortcut
+        Id="CirnoShortcut"
+        Name="Cirno"
+        Description="Windows 原生 Agent 座舱"
+        Target="[INSTALLFOLDER]Cirno.exe"
+        WorkingDirectory="INSTALLFOLDER"
+        Icon="CirnoIcon" />
+      <RemoveFolder Id="RemoveAppMenuFolder" Directory="AppMenuFolder" On="uninstall" />
+      <!-- 每个组件都需要 KeyPath；快捷方式所在目录用注册表值打点 -->
+      <RegistryValue
+        Root="HKCU"
+        Key="Software\Cirno"
+        Name="installed"
+        Type="integer"
+        Value="1"
+        KeyPath="yes" />
+    </Component>
+  </Fragment>
+
+</Wix>

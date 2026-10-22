@@ -62,9 +62,6 @@ public sealed partial class MainWindow : Window
         }
 
         _shell.Attach(WinRT.Interop.WindowNative.GetWindowHandle(this));
-        _shell.ShowRequested += RestoreWindow;
-        _shell.NewSessionRequested += () => _main.CreateSession(_main.ResolveWorkingDirectory());
-        _shell.ExitRequested += Close;
 
         _main = new MainViewModel(
             databasePath,
@@ -84,6 +81,11 @@ public sealed partial class MainWindow : Window
 
         _main.SummaryChanged += summary => _shell.Update(
             new ShellStatus(summary.Total, summary.Running, summary.AwaitingApproval, summary.Failed));
+
+        // 事件在 _main 就绪之后再挂，避免托盘先于视图模型可用（也消掉可空警告）
+        _shell.ShowRequested += RestoreWindow;
+        _shell.NewSessionRequested += () => _main.CreateSession(_main.ResolveWorkingDirectory());
+        _shell.ExitRequested += Close;
 
         _main.ActiveSessionChanged += OnActiveSessionChanged;
         SessionList.ItemsSource = _main.Sessions;

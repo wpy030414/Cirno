@@ -49,6 +49,7 @@ Cirno 是一个 WinUI 3 原生 Agent 座舱；本文件定义 Agent 在本仓库
 pnpm theme                          # 主题产物可生成、XML 合法、对比度闸门通过
 pnpm test:theme                     # 取色算法单测
 dotnet build apps/Cirno.slnx -p:Platform=x64   # 应用可编译
+# 打 MSI：installer\build-msi.ps1（需要 WiX 5，见 module-packaging spec）
 ```
 
 - 会话 id 必须是标准 UUID（带连字符）：Claude 的 `--session-id` 会校验格式，无连字符会被后端直接拒启。
@@ -72,6 +73,7 @@ dotnet build apps/Cirno.slnx -p:Platform=x64   # 应用可编译
 - `docs/specs/module-agent-protocol.md` — 两个后端协议的适配契约与归一化事件模型
 - `docs/specs/module-theme-pipeline.md` — 取色 → token → Theme.xaml 的产物契约
 - `docs/specs/module-packaging.md` — MSI 分发与依赖自举行为
+- `installer/` — MSI 构建：`build-msi.ps1`（发布 → 组件清单 → 打包）、`Package.wxs`（组件清单为生成物，不入库）
 - `tools/theme/` — 构建期主题管线（Node/TS）
 - `themes/<id>.theme/` — 主题数据：manifest + 源图（纯源文件，不含产物）
 - `apps/` — 解决方案文件

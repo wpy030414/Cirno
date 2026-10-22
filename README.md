@@ -24,7 +24,9 @@
 
 **安装（用户）**
 
-- 双击 `Cirno-<version>-x64.msi`，缺系统依赖时安装器会引导补齐。
+- 双击 `Cirno-<version>-x64.msi`：按用户安装到 `%LOCALAPPDATA%\Programs\Cirno`，不需要管理员。
+- .NET、Windows App SDK、VC++ 运行库都已随包，目标机器无需预装任何运行时。
+- 卸载默认保留会话数据（`%LOCALAPPDATA%\Cirno`），需要彻底清除时手工删除该目录。
 
 **安装（开发）**
 
@@ -40,6 +42,8 @@ pnpm theme:preview    # 预览取色结果
 pnpm theme:all        # 重建全部主题
 
 dotnet build apps/Cirno.slnx -p:Platform=x64
+# 打 MSI（自包含发布 → 组件清单 → WiX 打包，约 77MB）
+#   installer\build-msi.ps1
 # 运行（非打包，输出目录下的 Cirno.exe）
 ./src/Cirno.App/bin/Debug/net10.0-windows10.0.26100.0/win-x64/Cirno.exe
 ```
@@ -61,7 +65,8 @@ dotnet build apps/Cirno.slnx -p:Platform=x64
 
 ## 当前状态
 
-- **阶段**：M5（打磨）已跑通。文件变更按行着色（新增绿 / 删除红）、流式期间走纯文本快路径、会话级模型选择、键盘全流程均已落地。
+- **阶段**：M6（分发）已跑通 —— MSI 装完即可启动，卸载干净并保留用户数据。
+- M5（打磨）已跑通：文件变更按行着色（新增绿 / 删除红）、流式期间走纯文本快路径、会话级模型选择、键盘全流程。
 - **已知限制**：Codex 后端按用户决定暂缓（M3）；跳转列表未做；Markdown 仅支持子集（围栏代码块、标题、列表、加粗、行内代码），表格/链接/图片按纯文本呈现；万条消息的滚动性能尚未做基准测试。
 
 **快捷键**

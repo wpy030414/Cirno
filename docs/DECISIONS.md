@@ -227,3 +227,36 @@
 - 为什么不选其他：全部折叠让「原生 diff」这个卖点看不见；另开详情面板在 M6 前成本过高。
 - 后果：一次改动很大的 diff 会占满视口，需要滚动；超过 600 行时截断并提示。
 - 何时重新审视：单条 diff 经常超过一屏时，改为「摘要 + 可展开全文」。
+
+## ADR-121：MSI 按用户安装（免管理员），工具链固定 WiX 5
+- 日期：2026-10-22
+- 状态：已采纳
+- 背景：目标用户是个人开发者，装一个本地工具不应该先要管理员权限；同时打包工具要能免费、可脚本化。
+- 考虑过的方案：per-machine 装到 Program Files（需提权）；per-user 装到 `%LOCALAPPDATA%\Programs\Cirno`。
+- 决策：per-user + WiX 5.0.2。
+- 为什么选这个：per-user 安装无 UAC、无残留的机器级注册表、卸载更干净；WiX 5 是最后一个不需要接受 OSMF 商业授权的版本（v7 会直接拒绝构建）。
+- 为什么不选其他：per-machine 对个人工具过重；换用别的打包器（Inno/NSIS）会失去 MSI 的企业分发与静默安装语义。
+- 后果：不能写 `HKLM`，也没有包标识；换成 WiX 6/7 前必须先处理授权。
+- 何时重新审视：需要机器级部署或商店分发时。
+
+## ADR-122：VC++ 运行库随包 app-local 部署，不做安装期检测
+- 日期：2026-10-22
+- 状态：已采纳（取代 ADR-110 中的检测+引导方案）
+- 背景：自包含的 .NET 不带 `vcruntime140.dll` / `msvcp140.dll`，而 WinAppSDK 的原生 DLL 依赖它们。
+- 考虑过的方案：安装时读注册表检测 → 缺失就引导安装 redist；把编译器自带的可再分发 DLL 直接放进应用目录。
+- 决策：app-local 拷贝（`Microsoft.VC143.CRT\*.dll`，10 个文件约 2MB）。
+- 为什么选这个：微软允许随应用再分发；「缺依赖」直接不存在，比任何引导流程都可靠；MSI 内无自定义动作、无二次安装、可离线。
+- 为什么不选其他：检测 + 引导要维护注册表判断、静默模式分支、重启码 3010 处理，而收益只是省 2MB。
+- 后果：运行库版本跟构建机绑定，安全更新需要重新发版；`/qn` 场景不再有依赖失败分支。
+- 何时重新审视：微软提供官方 NuGet 形式的 CRT 运行库时。
+
+## ADR-123：发布产物必须自带 `<AssemblyName>.pri`
+- 日期：2026-10-22
+- 状态：已采纳
+- 背景：MSI 装完后应用一启动就崩在 `Microsoft.UI.Xaml.dll`（0xC000027B / E_FAIL）。
+- 考虑过的方案：改用 MSIX/打包应用；在 publish 后补一条拷贝 PRI 的目标。
+- 决策：csproj 增加 `EnsurePriInPublishDirectory`（`AfterTargets="Publish"`），把 `$(TargetDir)$(AssemblyName).pri` 拷进 `$(PublishDir)`。
+- 为什么选这个：`dotnet publish` 对非打包 WinUI 应用不会带上 PRI，缺少它 XAML 资源（含 BAML 与 `Themes/` 内容）无法解析；这是构建链的缺陷，不值得为此改分发形态。
+- 为什么不选其他：MSIX 需要签名与证书信任链，与 ADR-121 的免管理员取向冲突。
+- 后果：构建脚本之外还要记住这条；已在 csproj 注释与 packaging spec 里写明「发布必须包含 PRI」。
+- 何时重新审视：Windows App SDK 修复该 publish 行为后。

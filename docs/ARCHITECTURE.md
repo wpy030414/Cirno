@@ -94,6 +94,7 @@ themes/<id>.theme/manifest.json（roles + colorSource + displayName）
 | `codex app-server` | 同上；一个实例承载多个 thread |
 | Windows Shell（任务栏 / 托盘 / 跳转列表） | 通过 `ITaskbarList3`、通知区图标、`ICustomDestinationList` 交互 |
 | Windows 凭据管理器 | 存放 provider 的 API Key / token，绝不落库明文 |
+| MSI（WiX 5） | 按用户安装到 `%LOCALAPPDATA%\Programs\Cirno`；运行时与 VC++ 运行库全部随包 |
 | 文件系统 / `cwd` | 每个会话绑定一个固定工作目录，这是后端定位历史与工程语义的前提 |
 
 ## 关键子系统
