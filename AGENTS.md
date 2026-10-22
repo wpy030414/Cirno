@@ -39,15 +39,24 @@ Cirno 是一个 WinUI 3 原生 Agent 座舱；本文件定义 Agent 在本仓库
 - 新增主题 = 新建 `<id>.theme/` 目录 + `manifest.json` + 素材，不改代码。
 - 不引入远程资源依赖：素材本地内联，离线可用。
 - 不修改后端行为：不伪造工具结果、不改写模型请求、不注入系统提示。
-- 子进程必须由 Job Object 托管，保证应用退出时无残留进程。
+- 子进程最终必须由 Job Object 托管，保证应用崩溃退出时无残留进程；M1 阶段以「会话销毁时关闭 stdin + 杀进程树」兜底，Job Object 随 `Cirno.Shell.Windows` 在 M4 落地。
+- `src/Cirno.Agents.*` 的目标框架必须是 `net10.0`（不得引用 WinUI / Windows App SDK），从编译期守住「适配器不碰 UI」。
+- Claude 审批通道依赖两个开关缺一不可：`--permission-prompt-tool stdio` + host 先发 `initialize` 控制请求。缺少任一项，工具调用会被静默拒绝——改动前先看 `docs/specs/module-agent-protocol.md`。
 
 **验证**
 
 ```bash
 pnpm theme                          # 主题产物可生成、XML 合法、对比度闸门通过
 pnpm test:theme                     # 取色算法单测
-dotnet build apps/Cirno.slnx -p:Platform=x64   # 应用可编译（M0 起）
+dotnet build apps/Cirno.slnx -p:Platform=x64   # 应用可编译
 ```
+
+- 端到端自检（真实后端，会消耗 token）：
+  ```bash
+  Cirno.exe --cwd <dir> --prompt "读 hello.txt 并把行序反转后写入 out.txt" \
+            --trace <dir>\trace.jsonl [--auto-approve] [--stop-after 8]
+  ```
+  用 `--trace` 产出的 JSONL 断言事件序列，比肉眼可靠。
 
 - SDK 版本由根目录 `global.json` 锁定在 10.0.4xx；若 SDK 装在用户目录（如 `C:\Users\<u>\.dotnet`），需把该目录加入 PATH，或直接用其绝对路径调用 `dotnet.exe`。
 - 启动验证：`Cirno.exe --theme dafeiyu` 可直接以插画主题启动，用于无人值守校验主题包。
@@ -64,4 +73,9 @@ dotnet build apps/Cirno.slnx -p:Platform=x64   # 应用可编译（M0 起）
 - `docs/specs/module-packaging.md` — MSI 分发与依赖自举行为
 - `tools/theme/` — 构建期主题管线（Node/TS）
 - `themes/<id>.theme/` — 主题数据：manifest + 源图（纯源文件，不含产物）
-- `apps/`、`src/` — 应用本体（M0 起逐步落地）
+- `apps/` — 解决方案文件
+- `src/Cirno.App/` — WinUI 3 可执行：窗口、视图、ViewModel、主题装配
+- `src/Cirno.Core/` — 会话编排与持久化（M2 起落地）
+- `src/Cirno.Agents.Abstractions/` — 归一化事件模型与 `IAgentBackend` 契约（零 UI 依赖）
+- `src/Cirno.Agents.Claude/` — Claude Code stream-json 与 control 协议适配
+- `src/Cirno.Agents.Codex/` — Codex app-server 适配（M3 起落地）

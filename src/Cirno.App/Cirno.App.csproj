@@ -26,6 +26,11 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Cirno.Agents.Abstractions\Cirno.Agents.Abstractions.csproj" />
+    <ProjectReference Include="..\Cirno.Agents.Claude\Cirno.Agents.Claude.csproj" />
+  </ItemGroup>
+
   <!-- 主题产物：pnpm theme 生成 artifacts/themes/<id>/ → ms-appx:///Themes/<id>/ -->
   <ItemGroup>
     <Content Include="..\..\artifacts\themes\**\*.*"

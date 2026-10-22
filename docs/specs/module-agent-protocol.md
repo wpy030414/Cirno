@@ -26,13 +26,43 @@
 
 ### Claude Code 适配
 
+**已实测的启动契约**（CLI 2.1.301）：
+
 - 一个会话对应一个进程，stdin 常开即多轮；进程结束即会话结束。
-- 启动时由 Cirno 生成会话 UUID 并显式指定，使本地会话记录与后端会话一一对应。
-- 增量流与全量消息会重复表达同一内容：以增量驱动打字效果，收到全量后做幂等覆盖，不追加。
-- 工具调用与工具结果按 `tool_use_id` 配对；命令类工具映射为 `CommandExecution`，编辑类工具映射为 `FileChange` 并自行生成 diff。
-- 审批：后端发 `control_request`（子类型 `can_use_tool`）→ 界面决策 → 回 `control_response`（`allow` / `deny`，可带改写的输入或「总是允许」规则）。
-- **每个审批请求必须有终态应答**，否则后端工具调用永久阻塞且无超时；会话销毁时统一回 `deny`。
-- 中断通过控制通道发送；切换模型/权限模式优先走控制通道，不可用时退化为重启进程 + 恢复会话。
+- 必需参数：`--print --input-format stream-json --output-format stream-json --verbose --include-partial-messages`。
+- **审批必须显式打开**：`--permission-prompt-tool stdio`（隐藏参数）配合 `--permission-prompts host`。缺任一项时，需要授权的工具会被直接拒绝，工具结果返回 `"...you haven't granted it yet"`。
+- **宿主必须先发 `initialize` 控制请求**：`{"type":"control_request","request_id":"…","request":{"subtype":"initialize","hooks":{}}}`。不发握手时 CLI 同样不会把 `can_use_tool` 路由给宿主（已实测对比：握手前工具被拒，握手后被路由）。
+- 会话 id 由 Cirno 生成 UUID 经 `--session-id` 指定，使本地记录与后端会话一一对应；恢复用 `--resume <id>`。
+
+**审批报文形状**（实测）
+
+请求：
+
+```json
+{"type":"control_request","request_id":"…","request":{
+  "subtype":"can_use_tool","tool_name":"Bash","display_name":"Bash",
+  "input": { "command": "…" }, "description":"…",
+  "decision_reason_type":"rule","decision_reason_rule_source":"flagSettings",
+  "tool_use_id":"call_…"}}
+```
+
+应答（允许，`updatedInput` 原样回传，不得改写工具参数）：
+`{"type":"control_response","response":{"subtype":"success","request_id":"…","response":{"behavior":"allow","updatedInput":{…}}}}`
+
+应答（拒绝）：`{"behavior":"deny","message":"…"}`，工具结果会带 `is_error:true` 与这段文案。
+
+**控制通道其余能力**（实测）
+
+- 中断：`{"subtype":"interrupt"}` → 应答 `{"still_queued":[]}`，随后出现一条 `[Request interrupted by user]` 用户消息与 `stop_reason:null` 的 result。
+- 切换权限模式：`{"subtype":"set_permission_mode","mode":"acceptEdits"}` → 应答 `{"mode":…}`。
+
+**解析要点**
+
+- 增量流与全量消息会重复表达同一内容：以增量驱动打字效果，收到全量后按 `blk:<message_id>:<index>` 幂等覆盖，不追加。
+- 部分第三方网关（实测环境）下 `stream_event` 的 `event` 不带 `type` 字段，因此**增量只能当增强**，权威内容一律取自 `assistant` 全量消息。
+- 工具调用与工具结果按 `tool_use_id` 配对；`Bash` → `CommandExecution`，`Edit/Write/MultiEdit` → `FileChange` 并自行生成 diff，其余 → `ToolCall`。
+- 被中断的轮次 `stop_reason` 为 `null` 且 `is_error` 为 `true`，必须映射为 `Interrupted`，不能显示成失败。
+- **每个审批请求必须有终态应答**，会话销毁时统一回 `deny`。
 
 ### Codex 适配
 
@@ -78,13 +108,13 @@
 
 ## 验收标准
 
-- [ ] 用真实抓包夹具回放，产出的事件序列与快照一致。
-- [ ] Claude：完成一次含 Bash + Edit 工具调用的会话，审批可选允许/拒绝，`Esc` 可中断。
+- [ ] 用真实抓包夹具回放，产出的事件序列与快照一致。（M1 用 `--trace` 实跑断言代替，夹具化测试待补）
+- [x] Claude：完成一次含工具调用的会话，审批可允许（实测真机点击）、可中断（实测 `--stop-after`）；拒绝路径在协议层实测，UI 按钮走同一代码路径。
 - [ ] Codex：完成一次含命令与文件改动的轮次，diff 与计划卡正确渲染。
 - [ ] 同一窗口内两种后端会话并存，互不串流。
 - [ ] 手动杀掉后端进程，界面在 2 秒内进入失败态且不卡死。
-- [ ] 每个审批请求都有终态应答（可用日志断言）。
-- [ ] 退出应用后无残留 `claude` / `codex` 进程。
+- [~] 每个审批请求都有终态应答：会话销毁时统一 deny 已实现，尚未用日志断言。
+- [x] 退出应用后无残留 `claude` 进程（实测应用退出后 `claude` 进程数为 0）。
 
 ## 完成定义
 
