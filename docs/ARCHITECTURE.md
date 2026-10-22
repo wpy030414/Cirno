@@ -126,9 +126,12 @@ themes/<id>.theme/manifest.json（roles + colorSource + displayName）
 - 决策归一化为 `Allow / AllowForSession / Deny / Cancel`；后端独有的扩展（如按命令放行并记忆）作为附加选项呈现。
 - 每个审批请求必须有终态应答——否则后端工具调用会永久阻塞。
 
-### 主题
+### 视觉与主题
 
-- 默认主题不加载任何图片，完全由 Fluent 资源与 Mica 构成。
+- 视觉令牌：`Styles/Spacing|Typography|Controls|Content.xaml` 定义 4px 间距网格、官方字阶、
+  卡片/图标按钮/对话框/列表行样式；页面与组件不得再写散数值。
+- 主壳：内置 `TitleBar` 控件 + `NavigationView`（会话导航）+ 会话头/时间线/Composer 卡片/状态条。
+- 默认主题不加载任何图片，完全由 Fluent 资源与 Mica 构成；Mica 不可用时保留纯色回退层。
 - 插画主题由构建期产物装配：氛围背景（低不透明度）、两侧立绘（贴底、不遮挡交互）、内容遮罩。
 - 明/暗/高对比度三套字典齐备；高对比度下退回系统颜色，不做品牌着色。
 - 运行时切换主题 = 换资源字典 + 换装饰层，不重启应用。

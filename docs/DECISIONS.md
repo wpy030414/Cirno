@@ -337,3 +337,30 @@
 - 为什么不选其他：节流会让还原过程持续占用 UI 线程；引入分页数据源是更大的架构改动，收益与当前规模不匹配。
 - 后果：Reset 通知会让绑定方丢弃原有滚动位置与选择状态——对「打开历史会话」这个场景恰好是对的。
 - 何时重新审视：需要在还原过程中保持增量状态时。
+
+## ADR-131：界面视觉体系对齐 Fluent 2 令牌层，依赖版本对齐 Ceobe
+- 日期：2026-10-22
+- 状态：已采纳
+- 背景：界面此前是单文件 `MainWindow.xaml`，标题栏手写、间距与字号散落（7/10/13.5/12.5/11.5），
+  材质没有纯色回退；观感与同为 WinUI 3 的 Ceobe 差距明显。
+- 考虑过的方案：只调局部样式；引入一套设计令牌层并重排主壳；换成第三方 UI 框架。
+- 决策：
+  1. 新增 `Styles/Spacing|Typography|Controls|Content.xaml` 四套令牌：4px 间距网格、官方字阶、
+     统一卡片/图标按钮/对话框/列表行样式；页面只允许从令牌取值。
+  2. 主壳改用 `TitleBar` 控件 + `NavigationView`（会话导航、PaneHeader/PaneFooter 动作），
+     右侧工作区为「会话头 + 时间线 + Composer 卡片 + 状态条」。
+  3. 材质加纯色回退：`MicaController.IsSupported()` 时启用 `MicaBackdrop(BaseAlt)` 并隐藏回退层，
+     否则保留 `ApplicationPageBackgroundThemeBrush` 纯色层。
+  4. 依赖版本对齐 Ceobe：`Microsoft.WindowsAppSDK 2.5.1`、`CommunityToolkit.Mvvm 8.4.2`；
+     不显式钉 `Microsoft.Windows.SDK.BuildTools`（避免 NU1605 降级）。
+- 为什么选这个：视觉问题来自「没有约束」而不是「控件不够花哨」；令牌层把一致性变成编译期约定，
+  同时不改变任何会话/协议语义。
+- 为什么不选其他：换第三方框架会引入远程依赖与渲染层分叉，违背「原生 Fluent 2」定位；
+  只调局部样式无法解决数值散落与标题栏 caption 避让。
+- 后果（踩过的坑）：
+  - `NavigationView.MenuItemsSource` 只能由 XAML 赋值，代码赋值会命中 WinUI 原生层崩溃（0xC0000005）；
+    会话集合用 `ObservableCollection<object>` 镜像 + `x:Bind` 单向绑定。
+  - 行模板不要给 `SessionViewModel` 加 `x:DataType`：XAML 类型生成器会沿公开属性构造 `SessionRecord`
+    的激活器，撞上 `required` 成员而编译失败；行内改用经典 `Binding`。
+  - 材质不可用时必须有纯色层，否则深色下透明根元素会让文字落在白底上不可读。
+- 何时重新审视：需要跟随系统主题（第三态）、或改为多页面导航时。

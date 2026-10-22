@@ -8,74 +8,18 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+
+                <!--
+                  设计令牌：间距 / 字阶 / 控件样式 / 时间线内容样式。
+                  顺序在 XamlControlsResources 之后，这样 Typography/Controls 可以 BasedOn 内建样式。
+                -->
+                <ResourceDictionary Source="ms-appx:///Styles/Spacing.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/Typography.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/Controls.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/Content.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibility" />
-
-            <!-- 消息正文：样式化后才能在代码里构建控件并随主题切换刷新 -->
-            <Style x:Key="MessageBodyTextStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="13.5" />
-                <Setter Property="LineHeight" Value="21" />
-                <Setter Property="TextWrapping" Value="Wrap" />
-                <Setter Property="IsTextSelectionEnabled" Value="True" />
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
-            </Style>
-
-            <Style x:Key="CodeBlockBorderStyle" TargetType="Border">
-                <Setter Property="Padding" Value="12,10" />
-                <Setter Property="CornerRadius" Value="6" />
-                <Setter Property="Background" Value="{ThemeResource ControlFillColorDefaultBrush}" />
-                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
-                <Setter Property="BorderThickness" Value="1" />
-            </Style>
-
-            <Style x:Key="CodeBlockTextStyle" TargetType="TextBlock">
-                <Setter Property="FontFamily" Value="Consolas" />
-                <Setter Property="FontSize" Value="12.5" />
-                <Setter Property="LineHeight" Value="19" />
-                <Setter Property="TextWrapping" Value="Wrap" />
-                <Setter Property="IsTextSelectionEnabled" Value="True" />
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
-            </Style>
-
-            <Style x:Key="CodeBlockLabelStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="11" />
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
-            </Style>
-
-            <!-- TextBlock 在 WinUI 没有 Background，行底色由外层 Border 提供 -->
-            <Style x:Key="DiffAddRowStyle" TargetType="Border">
-                <Setter Property="Background" Value="{ThemeResource SystemFillColorSuccessBackgroundBrush}" />
-                <Setter Property="Padding" Value="4,0" />
-            </Style>
-
-            <Style x:Key="DiffRemoveRowStyle" TargetType="Border">
-                <Setter Property="Background" Value="{ThemeResource SystemFillColorCriticalBackgroundBrush}" />
-                <Setter Property="Padding" Value="4,0" />
-            </Style>
-
-            <Style x:Key="DiffAddTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CodeBlockTextStyle}">
-                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}" />
-            </Style>
-
-            <Style x:Key="DiffRemoveTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CodeBlockTextStyle}">
-                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
-            </Style>
-
-            <Style x:Key="DiffContextTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CodeBlockTextStyle}">
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
-                <Setter Property="Padding" Value="4,0" />
-            </Style>
-
-            <Style x:Key="MessageBodyMetaStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="11" />
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
-            </Style>
-
-            <Style x:Key="MetaTextStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="11.5" />
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
-            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

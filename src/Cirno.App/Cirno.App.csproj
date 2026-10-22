@@ -22,9 +22,18 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260804001" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.6584" />
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <!-- 标题栏图标：ms-appx:///Assets/cirno.ico -->
+    <Content Include="Assets\cirno.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      版本对齐 Ceobe（WindowsAppSDK 2.5.1 / MVVM 8.4.2）。
+      不显式引用 Microsoft.Windows.SDK.BuildTools：WindowsAppSDK 传递依赖要求 >= 10.0.26100.4654，
+      写死更低版本会触发 NU1605 包降级。
+    -->
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
 
   <ItemGroup>

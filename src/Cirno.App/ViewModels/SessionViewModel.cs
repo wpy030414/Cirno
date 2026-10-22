@@ -103,6 +103,16 @@ public sealed class SessionViewModel : ObservableObject
 
     public AgentSessionState State => _state;
 
+    /// <summary>侧栏状态点：三态各一个圆点，靠 Visibility 切换而不是代码里新建画刷。</summary>
+    public Visibility RunningBadgeVisibility =>
+        _state == AgentSessionState.Running ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility ApprovalBadgeVisibility =>
+        _state == AgentSessionState.AwaitingApproval ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility FailedBadgeVisibility =>
+        _state == AgentSessionState.Failed ? Visibility.Visible : Visibility.Collapsed;
+
     /// <summary>状态变化（供外壳聚合任务栏/托盘状态）。</summary>
     public event Action? StateChanged;
 
@@ -308,6 +318,9 @@ public sealed class SessionViewModel : ObservableObject
     public void ApplyState(AgentSessionState state)
     {
         _state = state;
+        OnPropertyChanged(nameof(RunningBadgeVisibility));
+        OnPropertyChanged(nameof(ApprovalBadgeVisibility));
+        OnPropertyChanged(nameof(FailedBadgeVisibility));
         StatusText = state switch
         {
             AgentSessionState.Queued => "等待中",

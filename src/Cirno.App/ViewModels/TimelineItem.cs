@@ -52,6 +52,8 @@ public sealed class TimelineItem : ObservableObject
             if (Set(ref _text, value))
             {
                 OnPropertyChanged(nameof(HasText));
+                OnPropertyChanged(nameof(Body));
+                OnPropertyChanged(nameof(HasBody));
             }
         }
     }
@@ -65,6 +67,8 @@ public sealed class TimelineItem : ObservableObject
             {
                 OnPropertyChanged(nameof(HasDetail));
                 OnPropertyChanged(nameof(Summary));
+                OnPropertyChanged(nameof(Body));
+                OnPropertyChanged(nameof(HasBody));
             }
         }
     }
@@ -122,6 +126,11 @@ public sealed class TimelineItem : ObservableObject
     }
 
     public bool HasText => _text.Length > 0;
+
+    /// <summary>展开区正文：优先 Detail，没有就退回 Text（思考条目只有 Text）。</summary>
+    public string Body => !string.IsNullOrWhiteSpace(_detail) ? _detail! : _text;
+
+    public bool HasBody => !string.IsNullOrWhiteSpace(Body);
 
     public bool HasDetail => !string.IsNullOrWhiteSpace(_detail);
 

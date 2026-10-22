@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+      时间线正文与代码块。样式化后才能在代码里构建控件并随主题切换刷新
+      （MessageBody / DiffBody 通过 Application.Current.Resources 取这些键）。
+    -->
+    <Style x:Key="MessageBodyTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="LineHeight" Value="21" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="IsTextSelectionEnabled" Value="True" />
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+    </Style>
+
+    <Style x:Key="CodeBlockBorderStyle" TargetType="Border">
+        <Setter Property="Padding" Value="12,10" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Background" Value="{ThemeResource ControlFillColorDefaultBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
+    <Style x:Key="CodeBlockTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource CirnoMonoFont}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="LineHeight" Value="18" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="IsTextSelectionEnabled" Value="True" />
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+    </Style>
+
+    <Style x:Key="CodeBlockLabelStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
+    </Style>
+
+    <!-- TextBlock 在 WinUI 没有 Background，行底色由外层 Border 提供 -->
+    <Style x:Key="DiffAddRowStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource SystemFillColorSuccessBackgroundBrush}" />
+        <Setter Property="Padding" Value="4,0" />
+    </Style>
+
+    <Style x:Key="DiffRemoveRowStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource SystemFillColorCriticalBackgroundBrush}" />
+        <Setter Property="Padding" Value="4,0" />
+    </Style>
+
+    <Style x:Key="DiffAddTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CodeBlockTextStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}" />
+    </Style>
+
+    <Style x:Key="DiffRemoveTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CodeBlockTextStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+    </Style>
+
+    <Style x:Key="DiffContextTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CodeBlockTextStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        <Setter Property="Padding" Value="4,0" />
+    </Style>
+
+    <Style x:Key="MessageBodyMetaStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
+    </Style>
+
+    <Style x:Key="MetaTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
+    </Style>
+</ResourceDictionary>

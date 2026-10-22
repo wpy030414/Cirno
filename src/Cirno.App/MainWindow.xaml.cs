@@ -1,9 +1,11 @@
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using Cirno.Agents.Claude;
 using Cirno.App.Services;
 using Cirno.App.ViewModels;
 using Cirno.Shell.Windows;
 using Microsoft.UI;
+using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -28,15 +30,22 @@ public sealed partial class MainWindow : Window
     private bool _ready;
     private bool _suppressSelection;
 
+    /// <summary>
+    /// 侧栏导航项：镜像 MainViewModel 的会话集合。
+    /// NavigationView 的 MenuItemsSource 只允许由 XAML 绑定赋值，代码里直接赋值会崩
+    /// （WinUI 原生层 0xC0000005），所以这里维护一份镜像并用 x:Bind 单向绑定。
+    /// </summary>
+    public ObservableCollection<object> Sessions { get; } = [];
+
     public MainWindow(SingleInstance? instance = null)
     {
         InitializeComponent();
 
         _instance = instance;
         Title = "Cirno";
-        SystemBackdrop = new MicaBackdrop();
+        ApplyBackdrop();
         ExtendsContentIntoTitleBar = true;
-        SetTitleBar(TitleBarDragRegion);
+        SetTitleBar(AppTitleBar);
         AppWindow.Resize(new SizeInt32(1280, 860));
 
         if (AppWindowTitleBar.IsCustomizationSupported())
@@ -46,8 +55,7 @@ public sealed partial class MainWindow : Window
         }
 
         _isDark = Application.Current.RequestedTheme == ApplicationTheme.Dark;
-        ModeToggle.IsChecked = _isDark;
-        ModeToggle.Content = _isDark ? "深色" : "浅色";
+        ModeToggle.IsOn = _isDark;
         ApplyElementTheme();
 
         ThemePicker.ItemsSource = _themes.Themes;
@@ -81,8 +89,12 @@ public sealed partial class MainWindow : Window
                 }
             });
 
-        _main.SummaryChanged += summary => _shell.Update(
-            new ShellStatus(summary.Total, summary.Running, summary.AwaitingApproval, summary.Failed));
+        _main.SummaryChanged += summary =>
+        {
+            _shell.Update(new ShellStatus(
+                summary.Total, summary.Running, summary.AwaitingApproval, summary.Failed));
+            ShellStatusText.Text = FormatSummary(summary);
+        };
 
         // 事件在 _main 就绪之后再挂，避免托盘先于视图模型可用（也消掉可空警告）
         _shell.ShowRequested += RestoreWindow;
@@ -90,7 +102,11 @@ public sealed partial class MainWindow : Window
         _shell.ExitRequested += Close;
 
         _main.ActiveSessionChanged += OnActiveSessionChanged;
-        SessionList.ItemsSource = _main.Sessions;
+        _main.Sessions.CollectionChanged += OnSessionsChanged;
+        foreach (var session in _main.Sessions)
+        {
+            Sessions.Add(session);
+        }
 
         var models = new List<ModelOption>
         {
@@ -293,13 +309,13 @@ public sealed partial class MainWindow : Window
     private void SyncSelection()
     {
         _suppressSelection = true;
-        SessionList.SelectedItem = _active;
+        SessionNav.SelectedItem = _active;
         _suppressSelection = false;
     }
 
-    private void OnSessionSelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void OnSessionSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs e)
     {
-        if (!_suppressSelection && SessionList.SelectedItem is SessionViewModel vm && !ReferenceEquals(vm, _active))
+        if (!_suppressSelection && SessionNav.SelectedItem is SessionViewModel vm && !ReferenceEquals(vm, _active))
         {
             _main.ActiveSession = vm;
         }
@@ -597,15 +613,87 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OnModeToggleClick(object sender, RoutedEventArgs e)
+    private void OnModeToggled(object sender, RoutedEventArgs e)
     {
-        _isDark = ModeToggle.IsChecked == true;
-        ModeToggle.Content = _isDark ? "深色" : "浅色";
+        _isDark = ModeToggle.IsOn;
         ApplyElementTheme();
         UpdateArt();
     }
 
     private void OnContentSizeChanged(object sender, SizeChangedEventArgs e) => ResizeCharacters();
+
+    private void OnSessionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        switch (e.Action)
+        {
+            case NotifyCollectionChangedAction.Add when e.NewItems is not null:
+            {
+                var index = e.NewStartingIndex < 0 ? Sessions.Count : e.NewStartingIndex;
+                foreach (var item in e.NewItems)
+                {
+                    Sessions.Insert(index++, item!);
+                }
+
+                break;
+            }
+
+            case NotifyCollectionChangedAction.Remove when e.OldItems is not null:
+                foreach (var item in e.OldItems)
+                {
+                    Sessions.Remove(item!);
+                }
+
+                break;
+
+            case NotifyCollectionChangedAction.Reset:
+                Sessions.Clear();
+                foreach (var session in _main.Sessions)
+                {
+                    Sessions.Add(session);
+                }
+
+                break;
+        }
+    }
+
+    private static string FormatSummary(SessionSummary summary)
+    {
+        var parts = new List<string> { $"{summary.Total} 个会话" };
+        if (summary.Running > 0)
+        {
+            parts.Add($"运行中 {summary.Running}");
+        }
+
+        if (summary.AwaitingApproval > 0)
+        {
+            parts.Add($"待审批 {summary.AwaitingApproval}");
+        }
+
+        if (summary.Failed > 0)
+        {
+            parts.Add($"失败 {summary.Failed}");
+        }
+
+        return string.Join(" · ", parts);
+    }
+
+    /// <summary>
+    /// 材质：Mica 可用时隐藏纯色回退层；不可用（Win10 或远程会话）时保留纯色，
+    /// 否则根元素透明会让深色下的文字落在白底上，整页不可读。
+    /// </summary>
+    private void ApplyBackdrop()
+    {
+        if (MicaController.IsSupported())
+        {
+            SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
+            PageBackground.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            SystemBackdrop = null;
+            PageBackground.Visibility = Visibility.Visible;
+        }
+    }
 
     private void ApplyElementTheme()
     {
