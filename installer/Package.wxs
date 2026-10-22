@@ -3,7 +3,8 @@
   Cirno 安装包。按用户安装（%LOCALAPPDATA%\Programs\Cirno），不需要管理员权限。
   卸载默认保留用户数据（%LOCALAPPDATA%\Cirno）；需要彻底清除时手工删除该目录。
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
   <Package
     Name="Cirno"
@@ -11,13 +12,16 @@
     Version="$(var.ProductVersion)"
     UpgradeCode="7d2f5d1e-9b6a-4f43-8c1d-3a5e9f2b6c48"
     Scope="perUser"
+    Codepage="936"
     Compressed="yes">
 
     <SummaryInformation
       Description="Cirno — Windows 原生 Agent 座舱"
       Manufacturer="Cirno" />
 
-    <MajorUpgrade DowngradeErrorMessage="已安装更高版本的 Cirno，请先在「应用和功能」里卸载。" />
+    <MajorUpgrade
+      DowngradeErrorMessage="已安装更高版本的 Cirno，请先在「应用和功能」里卸载。"
+      AllowSameVersionUpgrades="yes" />
     <MediaTemplate EmbedCab="yes" />
 
     <!-- 图标直接从 exe 提取，避免维护两份资源 -->
@@ -39,6 +43,54 @@
       <ComponentGroupRef Id="AppFiles" />
       <ComponentRef Id="StartMenuShortcut" />
     </Feature>
+
+    <!--
+      升级时先关掉正在运行的实例：文件被占用会导致覆盖失败。
+      CloseApplication 走 WM_CLOSE，交给应用自己优雅退出（回退审批、关子进程）。
+      Target 只写文件名（Windows Installer 按进程名匹配），RebootPrompt="no" 表示
+      关不掉就报错而不是安排重启。
+    -->
+    <util:CloseApplication
+      Id="CloseRunningCirno"
+      Target="Cirno.exe"
+      Description="正在运行的 Cirno 需要先关闭才能完成更新。请关闭后选择重试。"
+      RebootPrompt="no"
+      CloseMessage="yes"
+      PromptToContinue="yes"
+      Timeout="20"
+      Property="CIRNO_STILL_RUNNING" />
+
+    <!--
+      兜底：Cirno 常驻托盘，WM_CLOSE 不一定能可靠退出。
+      这里直接调用已装好的 Cirno.exe（带 shutdown 开关），走应用自己的单实例管道，
+      让主实例主动收尾（回退挂起审批、关子进程、落 WAL checkpoint）。
+      Return="ignore"：主实例本来就没在跑时这条命令会失败，不该因此中断安装。
+
+      只有支持该开关的版本才执行：旧版不认识这个参数，会当成普通启动
+      而弹出一个窗口。用注册表开关（由本安装包写入）来判断。
+    -->
+    <Property Id="CIRNO_SHUTDOWN_SUPPORTED">
+      <RegistrySearch
+        Id="CirnoShutdownSupportedSearch"
+        Root="HKCU"
+        Key="Software\Cirno"
+        Name="ShutdownSupported"
+        Type="raw" />
+    </Property>
+
+    <CustomAction
+      Id="RequestCirnoShutdown"
+      Directory="INSTALLFOLDER"
+      ExeCommand="&quot;[INSTALLFOLDER]Cirno.exe&quot; --shutdown"
+      Execute="immediate"
+      Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom
+        Action="RequestCirnoShutdown"
+        Before="RemoveExistingProducts"
+        Condition="CIRNO_SHUTDOWN_SUPPORTED = &quot;1&quot;" />
+    </InstallExecuteSequence>
   </Package>
 
   <Fragment>
@@ -59,6 +111,13 @@
         Type="integer"
         Value="1"
         KeyPath="yes" />
+      <!-- 支持 shutdown 开关的标记：安装器据此决定是否用管道方式优雅关闭 -->
+      <RegistryValue
+        Root="HKCU"
+        Key="Software\Cirno"
+        Name="ShutdownSupported"
+        Type="integer"
+        Value="1" />
     </Component>
   </Fragment>
 

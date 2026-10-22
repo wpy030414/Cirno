@@ -22,15 +22,17 @@ public sealed partial class MainWindow : Window
     private readonly ThemeService _themes = new();
     private readonly ShellIntegration _shell = new();
     private readonly MainViewModel _main;
+    private readonly SingleInstance? _instance;
     private SessionViewModel? _active;
     private bool _isDark;
     private bool _ready;
     private bool _suppressSelection;
 
-    public MainWindow()
+    public MainWindow(SingleInstance? instance = null)
     {
         InitializeComponent();
 
+        _instance = instance;
         Title = "Cirno";
         SystemBackdrop = new MicaBackdrop();
         ExtendsContentIntoTitleBar = true;
@@ -123,12 +125,20 @@ public sealed partial class MainWindow : Window
         _ready = true;
         ApplyTheme(initial);
 
+        CommitJumpList();
+
         _main.Restore();
         OnActiveSessionChanged(null, EventArgs.Empty);
 
         RootGrid.Loaded += OnRootLoaded;
         Closed += OnWindowClosed;
     }
+
+    /// <summary>开发期自检：万条消息的界面性能探针需要直接操作时间线与编排层。</summary>
+    public ListView TimelineControl => Timeline;
+
+    /// <summary>开发期自检：性能探针要往库里造数据。</summary>
+    public Cirno.Core.Orchestration.SessionOrchestrator? PerfOrchestrator => _main.Orchestrator;
 
     private async void OnRootLoaded(object sender, RoutedEventArgs e)
     {
@@ -139,6 +149,13 @@ public sealed partial class MainWindow : Window
         if (ReadArgument("--restore-check") is { } reportPath)
         {
             _main.WriteRestoreReport(reportPath);
+        }
+
+        // 开发期自检：万条消息的界面性能探针
+        if (int.TryParse(ReadArgument("--perf"), out var perfItems) && perfItems > 0)
+        {
+            await RunPerfProbeAsync(perfItems);
+            return;
         }
 
         var prompt = ReadArgument("--prompt");
@@ -180,6 +197,28 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// 开发期自检：造一个万条消息的会话，测还原/绑定/滚动/内存，报告落 JSON 后退出。
+    /// </summary>
+    private async Task RunPerfProbeAsync(int itemCount)
+    {
+        var probe = new PerfProbe(this, itemCount);
+        var report = await probe.RunAsync();
+
+        var reportPath = ReadArgument("--perf-report")
+                         ?? Path.Combine(Path.GetTempPath(), "cirno-perf-ui.json");
+        File.WriteAllText(reportPath, report.ToJson());
+
+        if (ReadArgument("--trace") is { } tracePath)
+        {
+            AppendShellTrace(tracePath, $"perf items={report.ItemCount} seed={report.SeedMs:F0}ms " +
+                                        $"restore={report.RestoreMs:F0}ms bind={report.BindMs:F0}ms " +
+                                        $"scroll={report.ScrollToEndMs:F0}ms heap={report.ManagedHeapBytes / 1024 / 1024:F1}MB");
+        }
+
+        Close();
+    }
+
     private async void OnWindowClosed(object sender, WindowEventArgs args)
     {
         // 先优雅释放会话（回绝挂起审批、关 stdin），再由 Job Object 兜底清理进程树
@@ -195,6 +234,34 @@ public sealed partial class MainWindow : Window
         }
 
         Activate();
+    }
+
+    /// <summary>处理来自第二个实例的启动意图（跳转列表、命令行复用等）。</summary>
+    public async void HandleActivation(ActivationRequest request)
+    {
+        if (ReadArgument("--trace") is { } activationTrace)
+        {
+            AppendShellTrace(
+                activationTrace,
+                $"activation new={request.NewSession} cwd={request.WorkingDirectory ?? "none"} prompt={(request.Prompt is null ? "none" : "yes")}");
+        }
+
+        if (request.BringToFront)
+        {
+            RestoreWindow();
+        }
+
+        if (request.NewSession)
+        {
+            var session = _main.CreateSession(request.WorkingDirectory ?? _main.ResolveWorkingDirectory());
+            _main.ActiveSession = session;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Prompt))
+        {
+            Composer.Text = request.Prompt;
+            await SendAsync();
+        }
     }
 
     // ---------- 会话切换 ----------
@@ -506,6 +573,29 @@ public sealed partial class MainWindow : Window
     private static bool HasFlag(string name)
         => Environment.GetCommandLineArgs()
             .Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>提交跳转列表：任务栏右键菜单里的「新建会话」。失败不影响主功能。</summary>
+    private void CommitJumpList()
+    {
+        var executable = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(executable))
+        {
+            return;
+        }
+
+        var jumpList = new JumpListService(executable);
+        var tracePath = ReadArgument("--trace");
+        if (tracePath is not null)
+        {
+            jumpList.Trace = message => AppendShellTrace(tracePath, message);
+        }
+
+        var committed = jumpList.TryCommit();
+        if (tracePath is not null)
+        {
+            AppendShellTrace(tracePath, $"jumplist-committed={committed} error={jumpList.LastError ?? "none"}");
+        }
+    }
 
     private void OnModeToggleClick(object sender, RoutedEventArgs e)
     {

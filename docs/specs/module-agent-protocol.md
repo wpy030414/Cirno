@@ -75,6 +75,45 @@
   有网络审批上下文时必须换文案（目标主机），不能当作命令预览展示。
 - 模型清单来自 `model/list`；会话级模型通过 `turn/start` 传递。
 
+## 协议回归护栏
+
+协议是最容易悄悄坏掉的一层：CLI 改一个字段名，界面就少一条消息，而没有任何编译错误。
+因此协议形状必须由夹具承载（见 ADR-124、ADR-125）。
+
+### 分层
+
+| 层 | 测什么 | 依赖 |
+|---|---|---|
+| 夹具回放（7 例） | 一行 stream-json → 归一化事件序列 | 无（纯函数） |
+| 端到端（4 例） | 进程启动 → 管道读写 → 初始化握手 → 审批往返 → 中断 | 假 CLI（`tests/Cirno.FakeClaude`） |
+
+### 夹具清单
+
+`tests/Cirno.Agents.Claude.Tests/fixtures/`：
+
+| 夹具 | 覆盖 |
+|---|---|
+| `text-turn.jsonl` | 初始化握手 → 文本增量 → result |
+| `tool-call.jsonl` | 流式增量合并、tool_use / tool_result 补全 |
+| `approval-allow.jsonl` | 审批请求 → 允许应答 |
+| `approval-deny.jsonl` | 审批请求 → 拒绝（标记为错误） |
+| `file-change.jsonl` | diff 渲染；成功回执不混入 diff |
+| `interrupted.jsonl` | `stop_reason: null` 表示中断，不是失败 |
+
+### 断言要点
+
+- 审批的 `updatedInput` 必须**原样**回传，不得改写工具参数。
+- 同一个 `request_id` 不可重复应答。
+- 工具结果的成功回执（「已更新」）不进入 `FileChange` 的 diff 正文。
+- `stop_reason: null` 且 `is_error: true` 表示**中断**（用户按了 Esc），不是失败。
+- 中断不应产生 `interrupt_no_ack` 之类的伪错误。
+
+### 端到端假 CLI
+
+`tests/Cirno.FakeClaude` 按 `CIRNO_FAKE_CLAUDE_SCRIPT` 给定的剧本逐行回放预录 stream-json，
+并自动应答宿主的 `control_request`（initialize / interrupt）。测试用 `.cmd` 包装它，
+通过 `CIRNO_CLAUDE_PATH` 注入被测进程。
+
 ## 输入 / 输出
 
 **输入**
@@ -108,12 +147,12 @@
 
 ## 验收标准
 
-- [ ] 用真实抓包夹具回放，产出的事件序列与快照一致。（M1 用 `--trace` 实跑断言代替，夹具化测试待补）
+- [x] 用真实抓包夹具回放，产出的事件序列与快照一致（7 个夹具用例全绿）。
 - [x] Claude：完成一次含工具调用的会话，审批可允许（实测真机点击）、可中断（实测 `--stop-after`）；拒绝路径在协议层实测，UI 按钮走同一代码路径。
 - [ ] Codex：完成一次含命令与文件改动的轮次，diff 与计划卡正确渲染。
 - [ ] 同一窗口内两种后端会话并存，互不串流。
 - [ ] 手动杀掉后端进程，界面在 2 秒内进入失败态且不卡死。
-- [~] 每个审批请求都有终态应答：会话销毁时统一 deny 已实现，尚未用日志断言。
+- [x] 每个审批请求都有终态应答：夹具与端到端用例都断言了允许、拒绝两条路径，且同一 `request_id` 不可重复应答。
 - [x] 退出应用后无残留 `claude` 进程（实测应用退出后 `claude` 进程数为 0）。
 
 ## 完成定义

@@ -19,25 +19,18 @@ public sealed class ClaudeBackend : IAgentBackend
                  + "或用环境变量 CIRNO_CLAUDE_PATH 指定路径。";
         }
 
-        var (fileName, argumentPrefix) = located.Value;
-
         try
         {
             var psi = new ProcessStartInfo
             {
-                FileName = fileName,
+                FileName = located.FileName,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
 
-            if (!string.IsNullOrEmpty(argumentPrefix))
-            {
-                psi.Arguments = argumentPrefix;
-            }
-
-            psi.ArgumentList.Add("--version");
+            ClaudeCliLocator.ApplyArguments(psi, located, ["--version"]);
 
             using var process = Process.Start(psi);
             if (process is null)

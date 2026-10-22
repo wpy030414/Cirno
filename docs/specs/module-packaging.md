@@ -39,6 +39,18 @@ installer/build-msi.ps1 -Version 0.1.0
 - 开始菜单快捷方式，图标直接取自 `Cirno.exe`。
 - 控制面板条目带图标（`ARPPRODUCTICON`）且不可修改（`ARPNOMODIFY`）。
 - 主版本升级用 `MajorUpgrade`。
+- 写注册表标记 `HKCU\Software\Cirno\ShutdownSupported=1`：表示已装版本支持优雅关闭开关。
+
+### 升级时关闭运行中的实例
+
+两条路径叠加（见 ADR-129）：
+
+1. `util:CloseApplication`（`Target="Cirno.exe"`）：标准的进程关闭检测，给用户「重试 / 中止」提示。
+   `RebootPrompt="no"` 表示关不掉就报错，而不是默默安排重启。
+2. CustomAction 调用已装好的 `Cirno.exe --shutdown`：走应用自己的单实例管道，让主实例主动收尾
+   （回退挂起审批、关子进程、落 WAL checkpoint）。Cirno 常驻托盘，WM_CLOSE 未必可靠。
+
+第 2 条由注册表标记 `ShutdownSupported` 把关：旧版不认识这个参数，贸然调用会当成普通启动而弹窗。
 
 ### 卸载
 
@@ -61,14 +73,16 @@ installer/build-msi.ps1 -Version 0.1.0
 
 - 无管理员权限：按用户安装，无需提权。
 - 安装包未签名：SmartScreen 警告属预期，正式分发前用受信证书签名。
-- 升级时应用仍在运行：当前不做自动关闭，需用户先退出（已知缺口）。
+- 升级时应用仍在运行：`util:CloseApplication` 提示用户关闭；`--shutdown` 走管道优雅退出。
+- 旧版（不支持 `--shutdown`）在跑时：注册表标记缺失，跳过管道路径，只靠 `util:CloseApplication`。
+- 自定义动作失败（如主实例本来就没在跑）：`Return="ignore"`，不中断安装。
 
 ## 已知缺口
 
 - **`REMOVEDATA=1` 未实现**。WiX 的 `RemoveFolderEx` 不支持「卸载时按属性条件执行」，
   纯 MSI 内实现需要自定义动作；M6 选择不做，改为文档说明手工删除用户数据。
 - 未做代码签名。
-- 未做「升级前自动关闭正在运行的实例」。
+- 覆盖升级未做端到端验证（MSI 构建通过、`--shutdown` 通路单独验证过，但未跑完整的「装旧版 → 运行 → 装新版」流程）。
 
 ## 验收标准
 
@@ -76,6 +90,7 @@ installer/build-msi.ps1 -Version 0.1.0
 - [x] 安装后的 exe 可直接启动并稳定存活。
 - [x] 卸载：安装目录与快捷方式移除，用户数据保留。
 - [x] 发布产物自带 VC 运行库（`vcruntime140.dll` 等 8 个 DLL 在应用目录）。
+- [x] 升级前关闭运行中实例：`--shutdown` 让主实例完全退出（进程列表中消失）。
 - [ ] 在真正「无 VC++ / 无 .NET」的干净机器上安装：本机已装 VC++，只有 app-local 拷贝这一间接证据。
 - [ ] 覆盖升级保留用户数据：未构造用例。
 - [ ] 代码签名：未做。

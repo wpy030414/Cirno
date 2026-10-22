@@ -1,4 +1,12 @@
+using System.Diagnostics;
+
 namespace Cirno.Agents.Claude;
+
+/// <summary>一次 claude 启动命令。cmd 脚本需要包一层 shell。</summary>
+/// <param name="FileName">实际可执行文件。</param>
+/// <param name="ArgumentPrefix">需要在业务参数之前插入的前缀（仅 cmd 脚本分支有值）。</param>
+/// <param name="ViaCmd">是否经过 cmd.exe 转发。</param>
+public sealed record ClaudeCliCommand(string FileName, string? ArgumentPrefix, bool ViaCmd);
 
 /// <summary>
 /// 定位 <c>claude</c> 可执行文件。
@@ -7,8 +15,8 @@ namespace Cirno.Agents.Claude;
 /// </summary>
 public static class ClaudeCliLocator
 {
-    /// <summary>返回可执行文件与需要的参数前缀；找不到时返回 null。</summary>
-    public static (string FileName, string ArgumentPrefix)? Locate()
+    /// <summary>返回启动命令；找不到时返回 null。</summary>
+    public static ClaudeCliCommand? Locate()
     {
         var overridePath = Environment.GetEnvironmentVariable("CIRNO_CLAUDE_PATH");
         if (!string.IsNullOrWhiteSpace(overridePath) && File.Exists(overridePath))
@@ -22,7 +30,7 @@ public static class ClaudeCliLocator
             var exe = Path.Combine(dir, "claude.exe");
             if (File.Exists(exe))
             {
-                return (exe, string.Empty);
+                return new ClaudeCliCommand(exe, null, ViaCmd: false);
             }
         }
 
@@ -31,7 +39,7 @@ public static class ClaudeCliLocator
         var npmExe = Path.Combine(appData, "npm", "node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe");
         if (File.Exists(npmExe))
         {
-            return (npmExe, string.Empty);
+            return new ClaudeCliCommand(npmExe, null, ViaCmd: false);
         }
 
         // 3) 只有脚本 shim：经 cmd.exe 启动
@@ -50,17 +58,17 @@ public static class ClaudeCliLocator
         return null;
     }
 
-    private static (string, string) Describe(string path)
+    private static ClaudeCliCommand Describe(string path)
     {
         var ext = Path.GetExtension(path);
         if (ext.Equals(".cmd", StringComparison.OrdinalIgnoreCase) ||
             ext.Equals(".bat", StringComparison.OrdinalIgnoreCase))
         {
             // /d 跳过 AutoRun，/s 保留引号语义，/c 执行后退出
-            return ("cmd.exe", $"/d /s /c \"\"{path}\"\"");
+            return new ClaudeCliCommand("cmd.exe", $"/d /s /c \"\"{path}\"\"", ViaCmd: true);
         }
 
-        return (path, string.Empty);
+        return new ClaudeCliCommand(path, null, ViaCmd: false);
     }
 
     private static IEnumerable<string> EnumeratePathDirectories()
@@ -74,5 +82,37 @@ public static class ClaudeCliLocator
                 yield return dir;
             }
         }
+    }
+
+    /// <summary>
+    /// 把业务参数拼成一条命令行。
+    /// cmd 转发分支必须用单一字符串（cmd 的 /c 语义），其余分支用参数列表更安全。
+    /// </summary>
+    public static void ApplyArguments(ProcessStartInfo psi, ClaudeCliCommand command, IEnumerable<string> args)
+    {
+        var list = args.ToList();
+
+        if (!command.ViaCmd)
+        {
+            foreach (var arg in list)
+            {
+                psi.ArgumentList.Add(arg);
+            }
+
+            return;
+        }
+
+        var joined = string.Join(' ', list.Select(Quote));
+        psi.Arguments = command.ArgumentPrefix + " " + joined;
+    }
+
+    private static string Quote(string value)
+    {
+        if (value.Length > 0 && !value.Any(char.IsWhiteSpace) && !value.Contains('"'))
+        {
+            return value;
+        }
+
+        return "\"" + value.Replace("\"", "\\\"") + "\"";
     }
 }

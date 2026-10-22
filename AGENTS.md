@@ -42,6 +42,9 @@ Cirno 是一个 WinUI 3 原生 Agent 座舱；本文件定义 Agent 在本仓库
 - 子进程最终必须由 Job Object 托管，保证应用崩溃退出时无残留进程；M1 阶段以「会话销毁时关闭 stdin + 杀进程树」兜底，Job Object 随 `Cirno.Shell.Windows` 在 M4 落地。
 - `src/Cirno.Agents.*` 的目标框架必须是 `net10.0`（不得引用 WinUI / Windows App SDK），从编译期守住「适配器不碰 UI」。
 - Claude 审批通道依赖两个开关缺一不可：`--permission-prompt-tool stdio` + host 先发 `initialize` 控制请求。缺少任一项，工具调用会被静默拒绝——改动前先看 `docs/specs/module-agent-protocol.md`。
+- 协议解析必须留在 `ClaudeEventParser` 这类纯状态机里，不要把 JSON 解析塞回 `ClaudeSession`。协议形状由 `tests/fixtures/*.jsonl` 承载，改协议就要改夹具（ADR-124）。
+- 改 COM 声明前先查本机 Windows SDK 头文件（`C:/Program Files (x86)\Windows Kits\10\Include\<ver>\um\`），不要抄网上的示例：IID 与 vtable 顺序错一位就是随机段错误（ADR-127）。
+- 存储层的写入热点不要引入 O(n²) 查询（每条查 `MAX(seq)` 这类）；序号在内存里递增，批量写入用单事务（ADR-128）。
 
 **验证**
 
@@ -49,6 +52,8 @@ Cirno 是一个 WinUI 3 原生 Agent 座舱；本文件定义 Agent 在本仓库
 pnpm theme                          # 主题产物可生成、XML 合法、对比度闸门通过
 pnpm test:theme                     # 取色算法单测
 dotnet build apps/Cirno.slnx -p:Platform=x64   # 应用可编译
+dotnet test apps/Cirno.slnx -p:Platform=x64    # 协议夹具 + 存储层性能护栏（15 例）
+# 存储层基准：dotnet run --project tools/perf -- --items 10000
 # 打 MSI：installer\build-msi.ps1（需要 WiX 5，见 module-packaging spec）
 ```
 
@@ -83,4 +88,8 @@ dotnet build apps/Cirno.slnx -p:Platform=x64   # 应用可编译
 - `src/Cirno.Agents.Abstractions/` — 归一化事件模型与 `IAgentBackend` 契约（零 UI 依赖）
 - `src/Cirno.Agents.Claude/` — Claude Code stream-json 与 control 协议适配
 - `src/Cirno.Agents.Codex/` — Codex app-server 适配（M3，按用户决定暂缓）
-- `src/Cirno.Shell.Windows/` — 任务栏、托盘、Job Object；不引用 Core，也不知道「会话」是什么
+- `src/Cirno.Shell.Windows/` — 任务栏、托盘、跳转列表、单实例、Job Object；不引用 Core，也不知道「会话」是什么
+- `tests/Cirno.Agents.Claude.Tests/` — 协议夹具回放与端到端用例（假 CLI 驱动，无网络）
+- `tests/Cirno.Core.Tests/` — 存储层正确性与万条消息性能护栏
+- `tests/Cirno.FakeClaude/` — 假 Claude CLI：按剧本回放预录 stream-json，供端到端测试拉起
+- `tools/perf/` — 存储层基准工具（写入/读取耗时、内存）

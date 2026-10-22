@@ -49,6 +49,13 @@ public sealed class SessionOrchestrator : IAsyncDisposable
 
     public IReadOnlyList<AgentItem> LoadItems(string sessionId) => _store.LoadItems(sessionId);
 
+    /// <summary>
+    /// 直接往本地库写条目，不经过后端。
+    /// 用于导入/迁移，以及开发期的性能自检（造一个万条消息的会话）。
+    /// </summary>
+    public IReadOnlyList<long> AppendItems(string sessionId, IEnumerable<AgentItem> items)
+        => _store.AppendItems(sessionId, items);
+
     public SessionRecord CreateSession(string providerId, string workingDirectory, string? model = null)
     {
         if (!_backends.ContainsKey(providerId))
@@ -333,6 +340,9 @@ public sealed class SessionOrchestrator : IAsyncDisposable
         }
 
         _slots.Dispose();
+
+        // 退出前把 WAL 落回主库：下次打开不必回放大量日志
+        _store.Checkpoint();
     }
 
     private sealed class Runtime

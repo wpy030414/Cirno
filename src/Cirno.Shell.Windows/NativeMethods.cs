@@ -29,6 +29,11 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool RemoveWindowSubclass(IntPtr hWnd, SubclassProc pfnSubclass, IntPtr uIdSubclass);
 
+    // ---------- 跳转列表 ----------
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
+
     // ---------- 消息 ----------
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

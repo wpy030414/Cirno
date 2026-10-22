@@ -58,7 +58,7 @@ public sealed class SessionViewModel : ObservableObject
     /// <summary>开发期自检：把归一化事件落到 JSONL，便于断言。</summary>
     public string? TracePath { get; }
 
-    public ObservableCollection<TimelineItem> Items { get; } = [];
+    public BulkObservableCollection<TimelineItem> Items { get; } = [];
 
     public string Id => _record.Id;
 
@@ -135,12 +135,17 @@ public sealed class SessionViewModel : ObservableObject
         }
 
         _historyLoaded = true;
+
+        // 一次批量提交：万条历史逐条 Add 会让绑定列表重排上万次
+        var items = new List<TimelineItem>();
         foreach (var item in _orchestrator.LoadItems(Id))
         {
             var vm = new TimelineItem(item);
             _index[item.Id] = vm;
-            Items.Add(vm);
+            items.Add(vm);
         }
+
+        Items.AddRange(items);
     }
 
     public void ApplyRecord(SessionRecord record)

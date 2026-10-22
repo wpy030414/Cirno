@@ -9,6 +9,9 @@ bin
 obj
 *.user
 
+# WiX 扩展（build-msi.ps1 按需下载到本地）
+.wix/
+
 # 本地 Agent 工作区（记忆、会话缓存）
 .workbuddy/
 

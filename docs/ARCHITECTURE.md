@@ -115,7 +115,10 @@ themes/<id>.theme/manifest.json（roles + colorSource + displayName）
 - 文件变更单独用 `DiffBody` 渲染：按行分类为新增/删除/上下文，行底色由外层 Border 提供
   （WinUI 的 TextBlock 没有 Background）。
 - Markdown 按块渲染：未闭合代码块走纯文本快速路径，闭合后再高亮。
+- 历史还原一次性提交给绑定列表（`BulkObservableCollection.AddRange`），避免上万次 CollectionChanged 触发逐条布局。
 - 目标：冷启动 < 1.5s 可交互；万条消息滚动不掉帧；材质不可用时降级为纯色不崩。
+- 万条消息的实测数字（见 `docs/specs/module-session-store.md` 的性能预算）：还原 34ms、绑定 21ms、
+  滚动到最后一条 30ms、托管堆 ~7MB。
 
 ### 审批
 
@@ -135,7 +138,10 @@ themes/<id>.theme/manifest.json（roles + colorSource + displayName）
 - 任务栏：进度态映射会话聚合状态（运行中 → `Indeterminate`、待审批 → `Paused`、失败 → `Error`、空闲 → `NoProgress`），
   待审批数量叠加为徽标图标。实现挂在窗口子类化上，收到 `TaskbarButtonCreated` 才初始化 `ITaskbarList3`。
 - 托盘常驻：显示窗口、新建会话、退出；提示文案随聚合状态变化。
-- 跳转列表：最近会话直达（**尚未实现**，M4 只做了任务栏与托盘）。
+- 跳转列表：向系统提交一份固定任务（当前是「新建会话」→ `--new-session`）。
+  进程启动早期必须先声明 AUMID（`Cirno.Desktop`），任务列表被系统缓存，因此任务必须静态。
+- 单实例：命名互斥体判主从 + 命名管道转交启动意图。第二次启动不建窗口，
+  把「新建会话 / 工作目录 / 初始提问」交给已有实例处理（ADR-126）。
 - 所有 Shell 调用都必须在窗口的任务栏按钮就绪之后进行（需要挂接窗口消息，而不是在窗口激活时抢先调用）。
 - 子进程由 Job Object（`KILL_ON_JOB_CLOSE`）托管：应用崩溃时整棵进程树被内核回收。
 
@@ -147,6 +153,7 @@ themes/<id>.theme/manifest.json（roles + colorSource + displayName）
 - 还原是惰性的：启动只读会话列表，点开某个会话才读它的条目；不启动任何后端进程，
   首次发送时才按 `ResumeSessionId` 恢复。
 - 凭据单独存放于 Windows 凭据管理器。
+- 写入序号在内存里递增（不每条查 `MAX(seq)`）；批量写入用单事务；应用退出前把 WAL checkpoint 回主库。
 
 ### Provider 与模型
 

@@ -14,6 +14,10 @@ public sealed class SessionStore : IDisposable
 {
     private readonly SqliteConnection _connection;
     private readonly object _gate = new();
+
+    /// <summary>各会话的下一个顺序号。避免每条写入都查 MAX(seq)（那是 O(n²)）。</summary>
+    private readonly Dictionary<string, long> _nextSeq = new(StringComparer.Ordinal);
+
     private bool _disposed;
 
     public SessionStore(string databasePath)
@@ -147,6 +151,12 @@ public sealed class SessionStore : IDisposable
 
             transaction.Commit();
         }
+
+        // 序号缓存作废：会话已删，下次写入要从头取号
+        lock (_gate)
+        {
+            _nextSeq.Remove(id);
+        }
     }
 
     /// <summary>追加或覆盖一个条目（同 id 幂等），返回其顺序号。</summary>
@@ -155,14 +165,17 @@ public sealed class SessionStore : IDisposable
         lock (_gate)
         {
             using var command = _connection.CreateCommand();
+
+            // 单条语句完成「取号 + 写入」：seq 在内存里递增，避免每条多跑一次
+            // MAX(seq) 查询——流式输出时这是热路径。
             command.CommandText = """
                 INSERT INTO items (session_id, item_id, seq, kind, text, detail, tool_name, tool_use_id, is_error, timestamp)
                 VALUES ($session, $item, $seq, $kind, $text, $detail, $tool, $toolUse, $error, $ts)
                 ON CONFLICT(session_id, item_id) DO UPDATE SET
                     text = excluded.text,
                     detail = excluded.detail,
-                    is_error = excluded.is_error;
-                SELECT seq FROM items WHERE session_id = $session AND item_id = $item;
+                    is_error = excluded.is_error
+                RETURNING seq;
                 """;
             command.Parameters.AddWithValue("$session", sessionId);
             command.Parameters.AddWithValue("$item", item.Id);
@@ -178,6 +191,56 @@ public sealed class SessionStore : IDisposable
             var result = command.ExecuteScalar();
             return result is long seq ? seq : 0;
         }
+    }
+
+    /// <summary>
+    /// 批量追加条目（单事务提交）。
+    /// <para>
+    /// 流式输出时逐条 <see cref="AppendItem"/> 就够——写量小、延迟低。
+    /// 但导入/迁移/压测这类一次性写入，逐条提交会被事务开销拖垮，
+    /// 这里用一个事务包住整批。
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<long> AppendItems(string sessionId, IEnumerable<AgentItem> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+
+        var sequences = new List<long>();
+        lock (_gate)
+        {
+            using var transaction = _connection.BeginTransaction();
+            foreach (var item in items)
+            {
+                using var command = _connection.CreateCommand();
+                command.Transaction = transaction;
+                    command.CommandText = """
+                        INSERT INTO items (session_id, item_id, seq, kind, text, detail, tool_name, tool_use_id, is_error, timestamp)
+                        VALUES ($session, $item, $seq, $kind, $text, $detail, $tool, $toolUse, $error, $ts)
+                        ON CONFLICT(session_id, item_id) DO UPDATE SET
+                            text = excluded.text,
+                            detail = excluded.detail,
+                            is_error = excluded.is_error
+                        RETURNING seq;
+                        """;
+                    command.Parameters.AddWithValue("$session", sessionId);
+                    command.Parameters.AddWithValue("$item", item.Id);
+                    command.Parameters.AddWithValue("$seq", NextSeq(sessionId));
+                command.Parameters.AddWithValue("$kind", (int)item.Kind);
+                command.Parameters.AddWithValue("$text", (object?)item.Text ?? DBNull.Value);
+                command.Parameters.AddWithValue("$detail", (object?)item.Detail ?? DBNull.Value);
+                command.Parameters.AddWithValue("$tool", (object?)item.ToolName ?? DBNull.Value);
+                command.Parameters.AddWithValue("$toolUse", (object?)item.ToolUseId ?? DBNull.Value);
+                command.Parameters.AddWithValue("$error", item.IsError ? 1 : 0);
+                command.Parameters.AddWithValue("$ts", Format(item.Timestamp));
+
+                var result = command.ExecuteScalar();
+                sequences.Add(result is long seq ? seq : 0);
+            }
+
+            transaction.Commit();
+        }
+
+        return sequences;
     }
 
     public IReadOnlyList<AgentItem> LoadItems(string sessionId)
@@ -212,6 +275,37 @@ public sealed class SessionStore : IDisposable
         }
     }
 
+    /// <summary>读取某会话的条目顺序号（升序）。用于验证时间线顺序的连续性。</summary>
+    public IReadOnlyList<long> LoadItemSequences(string sessionId)
+    {
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = "SELECT seq FROM items WHERE session_id = $session ORDER BY seq;";
+            command.Parameters.AddWithValue("$session", sessionId);
+
+            var list = new List<long>();
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                list.Add(reader.GetInt64(0));
+            }
+
+            return list;
+        }
+    }
+
+    /// <summary>
+    /// 把 WAL 日志落回主库。应用退出时调用，避免下次打开要先回放大量 WAL。
+    /// </summary>
+    public void Checkpoint()
+    {
+        lock (_gate)
+        {
+            Execute("PRAGMA wal_checkpoint(TRUNCATE);");
+        }
+    }
+
     public void TouchSession(string sessionId)
     {
         lock (_gate)
@@ -224,12 +318,24 @@ public sealed class SessionStore : IDisposable
         }
     }
 
+    /// <summary>
+    /// 取会话的下一个顺序号。
+    /// 首次访问时查一次库定基准，之后在内存里递增——每条写入都查 MAX(seq) 是 O(n²)。
+    /// </summary>
     private long NextSeq(string sessionId)
     {
+        if (_nextSeq.TryGetValue(sessionId, out var next))
+        {
+            _nextSeq[sessionId] = next + 1;
+            return next;
+        }
+
         using var command = _connection.CreateCommand();
         command.CommandText = "SELECT COALESCE(MAX(seq), 0) + 1 FROM items WHERE session_id = $session;";
         command.Parameters.AddWithValue("$session", sessionId);
-        return Convert.ToInt64(command.ExecuteScalar() ?? 1L, CultureInfo.InvariantCulture);
+        var seq = Convert.ToInt64(command.ExecuteScalar() ?? 1L, CultureInfo.InvariantCulture);
+        _nextSeq[sessionId] = seq + 1;
+        return seq;
     }
 
     private static SessionRecord ReadSession(SqliteDataReader reader) => new()

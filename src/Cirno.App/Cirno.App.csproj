@@ -47,19 +47,6 @@
       SkipUnchangedFiles="true" />
   </Target>
 
-  <!--
-    dotnet publish 在非打包 WinUI 应用上不会把 <AssemblyName>.pri 带进输出目录。
-    缺了它，XAML 资源（含编译后的 BAML 与 Themes/ 内容）无法解析，应用启动即崩
-    （Microsoft.UI.Xaml.dll 里 0xC000027B）。这里兜底拷一次。
-  -->
-  <Target Name="EnsurePriInPublishDirectory" AfterTargets="Publish">
-    <Copy
-      Condition="Exists('$(TargetDir)$(AssemblyName).pri')"
-      SourceFiles="$(TargetDir)$(AssemblyName).pri"
-      DestinationFolder="$(PublishDir)"
-      SkipUnchangedFiles="true" />
-  </Target>
-
   <!-- 主题产物：pnpm theme 生成 artifacts/themes/<id>/ → ms-appx:///Themes/<id>/ -->
   <ItemGroup>
     <Content Include="..\..\artifacts\themes\**\*.*"

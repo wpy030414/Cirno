@@ -1,0 +1,5 @@
+{"type":"system","subtype":"init","session_id":"11111111-2222-3333-4444-555555555555","model":"claude-sonnet-4-5","permissionMode":"default","claude_code_version":"2.0.14","tools":["Bash"]}
+{"type":"assistant","message":{"id":"msg_04","content":[{"type":"tool_use","id":"toolu_03","name":"Bash","input":{"command":"rm -rf build"}}]}}
+{"type":"control_request","request_id":"req_deny","request":{"subtype":"can_use_tool","tool_name":"Bash","tool_use_id":"toolu_03","display_name":"Bash","decision_reason_type":"rules","description":"运行 rm -rf build","input":{"command":"rm -rf build"}}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_03","is_error":true,"content":"用户拒绝了该工具调用。"}]}}
+{"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn","duration_ms":900,"usage":{"input_tokens":180,"output_tokens":30}}

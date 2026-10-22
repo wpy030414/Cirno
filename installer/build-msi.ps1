@@ -45,7 +45,20 @@ if ($LASTEXITCODE -ne 0) { throw "组件清单生成失败" }
 if (-not (Test-Path $wix)) { throw "未找到 wix.exe，请先安装：dotnet tool install --tool-path .workbuddy/tools wix" }
 
 New-Item -ItemType Directory -Force -Path (Split-Path $msiPath -Parent) | Out-Null
+
+# Util 扩展提供 util:CloseApplication：升级前先关掉正在运行的实例。
+# 扩展按 WiX 主版本配套（wix 5.x → WixToolset.Util 5.x），缺失时先装。
+$utilExtension = "WixToolset.Util.wixext"
+& $wix extension list 2>&1 | Out-String | ForEach-Object { $installed = $_ }
+if ($installed -notmatch [regex]::Escape($utilExtension)) {
+    $wixVersion = (& $wix --version).Trim()
+    $major = ($wixVersion -split "\+")[0]
+    & $wix extension add "$utilExtension/$major"
+    if ($LASTEXITCODE -ne 0) { throw "WiX Util 扩展安装失败" }
+}
+
 & $wix build (Join-Path $PSScriptRoot "Package.wxs") $components `
+    -ext WixToolset.Util.wixext `
     -d "ProductVersion=$Version" `
     -d "PublishDir=$publishDir" `
     -o $msiPath

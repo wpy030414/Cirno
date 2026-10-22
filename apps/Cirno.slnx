@@ -7,4 +7,8 @@
   <Project Path="../src/Cirno.Core/Cirno.Core.csproj" />
   <Project Path="../src/Cirno.Shell.Windows/Cirno.Shell.Windows.csproj" />
   <Project Path="../src/Cirno.App/Cirno.App.csproj" />
+  <Project Path="../tests/Cirno.Agents.Claude.Tests/Cirno.Agents.Claude.Tests.csproj" />
+  <Project Path="../tests/Cirno.Core.Tests/Cirno.Core.Tests.csproj" />
+  <Project Path="../tests/Cirno.FakeClaude/Cirno.FakeClaude.csproj" />
+  <Project Path="../tools/perf/Cirno.Perf.csproj" />
 </Solution>

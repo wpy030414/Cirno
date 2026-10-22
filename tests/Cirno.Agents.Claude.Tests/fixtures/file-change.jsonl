@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"11111111-2222-3333-4444-555555555555","model":"claude-sonnet-4-5","permissionMode":"default","claude_code_version":"2.0.14","tools":["Edit"]}
+{"type":"assistant","message":{"id":"msg_05","content":[{"type":"tool_use","id":"toolu_04","name":"Edit","input":{"file_path":"C:\\work\\a.txt","old_string":"old line","new_string":"new line"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_04","content":"The file C:\\work\\a.txt has been updated successfully."}]}}
+{"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn","duration_ms":1100,"usage":{"input_tokens":210,"output_tokens":35}}

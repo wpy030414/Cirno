@@ -1,0 +1,5 @@
+{"type":"system","subtype":"init","session_id":"11111111-2222-3333-4444-555555555555","model":"claude-sonnet-4-5","permissionMode":"default","claude_code_version":"2.0.14","tools":["Bash","Edit"]}
+{"type":"assistant","message":{"id":"msg_03","content":[{"type":"tool_use","id":"toolu_02","name":"Bash","input":{"command":"git status"}}]}}
+{"type":"control_request","request_id":"req_abc","request":{"subtype":"can_use_tool","tool_name":"Bash","tool_use_id":"toolu_02","display_name":"Bash","decision_reason_type":"rules","description":"运行 git status","input":{"command":"git status"}}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_02","content":"On branch main"}]}}
+{"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn","duration_ms":2100,"usage":{"input_tokens":200,"output_tokens":40}}
