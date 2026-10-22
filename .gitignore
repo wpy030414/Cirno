@@ -2,17 +2,14 @@
 node_modules
 dist
 
-# 本地 Agent 工作区（记忆、会话缓存）
-.workbuddy/
-
-# 主题构建产物（由 pnpm theme 生成，随源码重建）
-themes/*.theme/generated
-
-# .NET / WinUI 构建产物
+# 构建产物（pnpm theme 生成的 artifacts/themes、.NET 输出）
+artifacts
 bin
 obj
-artifacts
 *.user
+
+# 本地 Agent 工作区（记忆、会话缓存）
+.workbuddy/
 
 # 系统
 .DS_Store

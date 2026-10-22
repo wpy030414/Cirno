@@ -11,7 +11,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import sharp from 'sharp'
 import { TOKEN_KEYS } from './types.js'
-import { getThemeDir, getThemeMeta, getAllRoleImagePaths, type ThemeMeta } from './assets-loader.js'
+import { getThemeDir, getThemeMeta, getThemePackageDir, getAllRoleImagePaths, type ThemeMeta } from './assets-loader.js'
 
 /** 明暗两套 token */
 export interface TokenPair {
@@ -373,7 +373,8 @@ export async function emitTheme(
   outDir?: string
 ): Promise<EmitResult> {
   const meta = getThemeMeta(theme)
-  const dir = outDir ?? path.join(getThemeDir(theme), 'generated')
+  // 产物目录 artifacts/themes/<id>/ 与 ms-appx:///Themes/<id>/ 一一对应
+  const dir = outDir ?? getThemePackageDir(theme)
   fs.mkdirSync(dir, { recursive: true })
 
   for (const w of validateTokens(pair)) {

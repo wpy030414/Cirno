@@ -35,7 +35,7 @@ Cirno 是一个 WinUI 3 原生 Agent 座舱；本文件定义 Agent 在本仓库
 - 归一化事件模型是硬边界：界面层不得出现后端专有字段名；无法识别的条目降级展示，不得丢弃。
 - 每个审批请求必须有终态应答，否则后端工具调用会永久阻塞。
 - 颜色一律来自 token；源码中不得硬编码色值。带 alpha 的颜色只允许出现在组件级调色板。
-- `themes/*.theme/generated/`、`tools/theme/dist/` 为构建产物，不得手工修改，也不纳入版本控制。
+- `artifacts/`、`tools/theme/dist/` 为构建产物，不得手工修改，也不纳入版本控制。
 - 新增主题 = 新建 `<id>.theme/` 目录 + `manifest.json` + 素材，不改代码。
 - 不引入远程资源依赖：素材本地内联，离线可用。
 - 不修改后端行为：不伪造工具结果、不改写模型请求、不注入系统提示。
@@ -46,8 +46,11 @@ Cirno 是一个 WinUI 3 原生 Agent 座舱；本文件定义 Agent 在本仓库
 ```bash
 pnpm theme                          # 主题产物可生成、XML 合法、对比度闸门通过
 pnpm test:theme                     # 取色算法单测
-dotnet build apps/Cirno.slnx        # 应用可编译（M0 起）
+dotnet build apps/Cirno.slnx -p:Platform=x64   # 应用可编译（M0 起）
 ```
+
+- SDK 版本由根目录 `global.json` 锁定在 10.0.4xx；若 SDK 装在用户目录（如 `C:\Users\<u>\.dotnet`），需把该目录加入 PATH，或直接用其绝对路径调用 `dotnet.exe`。
+- 启动验证：`Cirno.exe --theme dafeiyu` 可直接以插画主题启动，用于无人值守校验主题包。
 
 ## 目录速查
 
@@ -60,5 +63,5 @@ dotnet build apps/Cirno.slnx        # 应用可编译（M0 起）
 - `docs/specs/module-theme-pipeline.md` — 取色 → token → Theme.xaml 的产物契约
 - `docs/specs/module-packaging.md` — MSI 分发与依赖自举行为
 - `tools/theme/` — 构建期主题管线（Node/TS）
-- `themes/<id>.theme/` — 主题数据：manifest + 源图（`generated/` 为产物）
+- `themes/<id>.theme/` — 主题数据：manifest + 源图（纯源文件，不含产物）
 - `apps/`、`src/` — 应用本体（M0 起逐步落地）

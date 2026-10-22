@@ -17,10 +17,10 @@ themes/<id>.theme/manifest.json
         ↓ 生成
   46 个 token × { light, dark }
         ↓ 发射
-  generated/Theme.xaml      三套 ThemeDictionaries + Cirno* 全量调色板 + 主题元数据
-  generated/ThemeInfo.json  展示信息、资产 URI、代码侧最小色板
-  generated/Assets/*        背景 JPG、立绘 PNG
-  dist/themes.json          主题注册表（应用的主题选择器读取）
+  artifacts/themes/<id>/Theme.xaml      三套 ThemeDictionaries + Cirno* 全量调色板 + 主题元数据
+  artifacts/themes/<id>/ThemeInfo.json  展示信息、资产 URI、代码侧最小色板
+  artifacts/themes/<id>/Assets/*        背景 JPG、立绘 PNG
+  tools/theme/dist/themes.json          主题注册表（应用的主题选择器读取）
 ```
 
 ### 46 token 契约
@@ -56,7 +56,8 @@ themes/<id>.theme/manifest.json
 
 **输出**
 
-- `themes/<id>.theme/generated/Theme.xaml`、`ThemeInfo.json`、`Assets/*`、`tokens.json`。
+- `artifacts/themes/<id>/Theme.xaml`、`ThemeInfo.json`、`Assets/*`、`tokens.json`。
+  该目录与 `ms-appx:///Themes/<id>/` 一一对应，由应用项目整体映射打包。
 - `tools/theme/dist/themes.json`：`{ builtin, themes[] }`，内置默认主题不在此列（由应用内置）。
 
 ## 约束
@@ -82,7 +83,7 @@ themes/<id>.theme/manifest.json
 - [ ] 明暗两套下正文对比度 ≥ 4.5:1，弱提示文字 ≥ 3:1。
 - [ ] 主题注册表包含「大肥鱼」，且 `displayName` 正确。
 - [ ] 应用加载该 XAML 后，标准控件（按钮、输入框、列表、菜单、Tab、InfoBar）全部跟随主题。
-- [ ] 删除 `generated/` 后重建，产物字节级一致（确定性）。
+- [ ] 删除 `artifacts/themes/` 后重建，产物字节级一致（确定性）。
 
 ## 完成定义
 

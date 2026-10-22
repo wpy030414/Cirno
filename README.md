@@ -35,19 +35,21 @@ pnpm install
 **运行 / 构建**
 
 ```bash
-pnpm theme            # 构建主题资源（取色 → Theme.xaml + 资产）
+pnpm theme            # 构建主题资源（取色 → Theme.xaml + 资产，输出到 artifacts/themes/）
 pnpm theme:preview    # 预览取色结果
 pnpm theme:all        # 重建全部主题
 
-# 应用本体（M0 进行中）
-dotnet build apps/Cirno.slnx
+dotnet build apps/Cirno.slnx -p:Platform=x64
+# 运行（非打包，输出目录下的 Cirno.exe）
+./src/Cirno.App/bin/Debug/net10.0-windows10.0.26100.0/win-x64/Cirno.exe
 ```
+
+启动参数：`--theme <id>` 可直接以指定主题启动（如 `--theme dafeiyu`）。
 
 ## 当前状态
 
-- **阶段**：重构期（M0）。Electron 皮肤引擎已删除，应用外壳尚未落地。
-- 已就绪：主题管线（取色 → 46 token → WinUI 资源字典 → 位图资产 → 主题注册表）。
-- **已知限制**：应用本体、会话管理、两个后端适配器、任务栏集成均未实现；详见 `docs/PRD.md` 的里程碑。
+- **阶段**：M0（骨架）已完成并可启动。应用外壳是 WinUI 3 非打包应用，Mica 背景、自定义标题栏、明暗切换、主题切换（默认 / 大肥鱼）均已可用。
+- **已知限制**：会话管理、两个后端适配器、任务栏集成尚未实现；侧边栏目前只有空状态。详见 `docs/PRD.md` 的里程碑。
 - 本机开发环境注意：需要安装 .NET 10 SDK（当前机器只有运行时）。
 
 ## 核心技术

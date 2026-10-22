@@ -126,6 +126,19 @@ export function getThemesRoot(): string {
   return getThemesDir()
 }
 
+/** 仓库根目录 */
+export function getRepoRoot(): string {
+  return path.resolve(__dirname, '../../..')
+}
+
+/**
+ * 主题包的构建产物目录：artifacts/themes/<id>/。
+ * 目录内容与 ms-appx:///Themes/<id>/ 一一对应，由 app 项目整体映射。
+ */
+export function getThemePackageDir(theme: string): string {
+  return path.join(getRepoRoot(), 'artifacts', 'themes', normalizeThemeName(theme))
+}
+
 /** 归一化主题名：接受 `dafeiyu` 或 `dafeiyu.theme` 两种写法 */
 function normalizeThemeName(name: string): string {
   return name.endsWith(THEME_SUFFIX) ? name.slice(0, -THEME_SUFFIX.length) : name

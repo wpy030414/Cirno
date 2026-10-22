@@ -10,6 +10,7 @@ import {
   getCharConfig,
   getThemeDir,
   getThemeMeta,
+  getThemePackageDir,
   listThemes,
   selectTheme,
   DEFAULT_CHAR_CONFIG,
@@ -39,6 +40,8 @@ export {
   getActiveTheme,
   getCharConfig,
   getThemesRoot,
+  getRepoRoot,
+  getThemePackageDir,
   DEFAULT_CHAR_CONFIG,
   DEFAULT_ART,
 } from './assets-loader.js'
@@ -93,7 +96,7 @@ export async function buildTokens(options: BuildOptions): Promise<TokenPair> {
 export async function buildTheme(theme: string, opts: { k?: number } = {}) {
   const meta = getThemeMeta(theme)
   const sources = getColorSourceImagePaths(theme)
-  const outDir = path.join(getThemeDir(theme), 'generated')
+  const outDir = getThemePackageDir(theme)
 
   const pair = await buildTokens({
     sources,
@@ -132,7 +135,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 
     // 注册表汇总所有已发射主题（含本次未构建的），app 主题选择器据此列出
     const infoPaths = listThemes()
-      .map((t) => path.join(getThemeDir(t), 'generated', 'ThemeInfo.json'))
+      .map((t) => path.join(getThemePackageDir(t), 'ThemeInfo.json'))
       .filter((p) => fs.existsSync(p))
     if (infoPaths.length > 0) {
       const registry = writeThemeRegistry(infoPaths, path.resolve('dist/themes.json'))
