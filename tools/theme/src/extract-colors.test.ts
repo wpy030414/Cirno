@@ -96,7 +96,7 @@ test('buildTokens：确定性 + light/dark 各 46 键 + 全部 6 位 hex', async
 })
 
 test('colorSource 纪律：仅 manifest colorSource 图参与取色（背景毒色不进 tokens）', async () => {
-  const themeDir = path.resolve(__dirname, '../../skin-assets/.tmp-extract-test.theme')
+  const themeDir = path.resolve(__dirname, '../../../themes/.tmp-extract-test.theme')
   fs.mkdirSync(themeDir, { recursive: true })
   try {
     const warmPath = path.join(themeDir, 'warm.png')

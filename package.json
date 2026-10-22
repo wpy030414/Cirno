@@ -1,13 +1,12 @@
 {
-  "name": "personalized-agent",
+  "name": "cirno",
   "private": true,
   "type": "module",
   "scripts": {
-    "build-tokens": "pnpm --filter @skins/core build",
-    "preview": "pnpm --filter @skins/core preview",
-    "apply:codex": "pnpm --filter @skins/codex apply",
-    "apply:opencode": "pnpm --filter @skins/opencode apply",
-    "apply:qwenwork": "pnpm --filter @skins/qwenwork apply"
+    "theme": "pnpm --filter @cirno/theme build",
+    "theme:all": "pnpm --filter @cirno/theme build:all",
+    "theme:preview": "pnpm --filter @cirno/theme preview",
+    "test:theme": "pnpm --filter @cirno/theme test"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

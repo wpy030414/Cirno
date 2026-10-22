@@ -1,14 +1,15 @@
 {
-  "name": "@skins/core",
-  "description": "Universal skin pipeline: extract colors from images and generate design tokens",
+  "name": "@cirno/theme",
+  "description": "Cirno 主题管线：从插画取色 → 46 token（light/dark）→ WinUI 3 Theme.xaml + 位图资产",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./assets-loader": "./src/assets-loader.ts",
-    "./bootstrap-builder": "./src/bootstrap-builder.ts"
+    "./emit-xaml": "./src/emit-xaml.ts"
   },
   "scripts": {
     "build": "tsx src/index.ts",
+    "build:all": "tsx src/index.ts --all",
     "preview": "tsx src/palette-preview.ts",
     "test": "tsx --test src/extract-colors.test.ts"
   },

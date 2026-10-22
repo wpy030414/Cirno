@@ -1,6 +1,5 @@
 packages:
-  - 'packages/*'
-  - 'packages/skins/*'
+  - 'tools/*'
 
 allowBuilds:
   esbuild: true

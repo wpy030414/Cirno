@@ -1,0 +1,28 @@
+{
+  "schema": "cirno-theme-v1",
+  "id": "dafeiyu",
+  "displayName": "大肥鱼",
+  "description": "带插画氛围层与两侧角色立绘的完整主题，配色由角色插画取色生成。",
+  "art": {
+    "overlayOpacity": 0.24,
+    "characterOpacity": 0.92,
+    "scrimOpacity": 0.55
+  },
+  "roles": {
+    "background-day": "dafeiyu-background-day.webp",
+    "background-night": "dafeiyu-background-night.webp",
+    "character-left": "dafeiyu-character-left.webp",
+    "character-right": "dafeiyu-character-right.webp"
+  },
+  "char-config": {
+    "character-left": {
+      "offset": ["0%", "0%"],
+      "height": "86%"
+    },
+    "character-right": {
+      "offset": ["0%", "0%"],
+      "height": "78%"
+    }
+  },
+  "colorSource": ["dafeiyu-character-left.webp", "dafeiyu-character-right.webp"]
+}

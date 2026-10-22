@@ -1,8 +1,7 @@
 // src/assets-loader.ts
-// Helper to load standard role images from skin-assets via per-theme manifest.json.
-// skin-assets 下每个 <name>.theme/ 目录是一个主题，拥有自己的 manifest.json
-// （4 个标准角色映射 + colorSource 取色声明）。所有加载函数都必须显式指定主题，
-// 未指定时由 selectTheme() 交互选择或报错——绝不静默选主题。
+// 主题资产加载：themes/ 下每个 <id>.theme/ 目录是一个主题，各有 manifest.json
+// （4 个标准角色映射 + colorSource 取色声明 + 展示元数据）。所有加载函数都必须
+// 显式指定主题，未指定时由 selectTheme() 交互选择或报错——绝不静默选主题。
 import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
@@ -37,8 +36,13 @@ export type ResolvedCharConfig = {
 
 interface Manifest {
   schema: string
-  /** 可选——新版 manifest 已删除该字段，保留仅为兼容旧文件 */
+  /** 主题 id（缺省取目录名） */
+  id?: string
+  /** 展示名，如「大肥鱼」 */
+  displayName?: string
   description?: string
+  /** 艺术层参数（不透明度等），缺省用 DEFAULT_ART */
+  art?: Partial<ArtConfig>
   roles: Record<StandardRole, string>
   /**
    * 取色来源，喂给取色管线的图。条目可以是**角色 key**（旧契约，
@@ -49,10 +53,31 @@ interface Manifest {
   /**
    * 角色展示配置（可选）。键为角色 key（character-left / character-right），
    * 每个角色可配 offset（[x, y] CSS 值字符串，距边/距底）与 height（CSS 值），
-   * 未列出的角色与未配字段用默认值。由 build-tokens 写入 tokens.json，
-   * 供 apply 时生成 --character-*-height / --character-*-position CSS 变量。
+   * 未列出的角色与未配字段用默认值。
    */
   'char-config'?: Partial<Record<StandardRole, CharConfig>>
+}
+
+/** 艺术层参数：氛围图不透明度 / 立绘不透明度 / 内容遮罩浓度 */
+export interface ArtConfig {
+  overlayOpacity: number
+  characterOpacity: number
+  scrimOpacity: number
+}
+
+export const DEFAULT_ART: ArtConfig = {
+  overlayOpacity: 0.24,
+  characterOpacity: 0.92,
+  scrimOpacity: 0.55,
+}
+
+/** 主题的展示元数据（app 主题选择器 / 发射器共用） */
+export interface ThemeMeta {
+  id: string
+  displayName: string
+  description?: string
+  art: ArtConfig
+  charConfig: Record<'character-left' | 'character-right', ResolvedCharConfig>
 }
 
 /** 角色配置默认值：未配置时左右均贴边贴底（offset ["0%", "0%"]）、高度 86% */
@@ -78,19 +103,37 @@ export function getCharConfig(theme: string): Record<'character-left' | 'charact
   }
 }
 
-// Resolve skin-assets path from skin-core
-function getSkinAssetsDir(): string {
-  return path.resolve(__dirname, '../../skin-assets')
+/** 读取主题展示元数据（名称 / 描述 / 艺术层参数 / 角色布局） */
+export function getThemeMeta(theme: string): ThemeMeta {
+  const manifest = loadManifest(theme)
+  const themeName = normalizeThemeName(theme)
+  return {
+    id: manifest.id ?? themeName,
+    displayName: manifest.displayName ?? themeName,
+    description: manifest.description,
+    art: { ...DEFAULT_ART, ...(manifest.art ?? {}) },
+    charConfig: getCharConfig(theme),
+  }
 }
 
-/** 归一化主题名：接受 `maid-atelier` 或 `maid-atelier.theme` 两种写法 */
+// Resolve themes dir from tools/theme/src
+function getThemesDir(): string {
+  return path.resolve(__dirname, '../../../themes')
+}
+
+/** 主题根目录（供发射器输出与 app 打包引用） */
+export function getThemesRoot(): string {
+  return getThemesDir()
+}
+
+/** 归一化主题名：接受 `dafeiyu` 或 `dafeiyu.theme` 两种写法 */
 function normalizeThemeName(name: string): string {
   return name.endsWith(THEME_SUFFIX) ? name.slice(0, -THEME_SUFFIX.length) : name
 }
 
-/** 列出 skin-assets 下所有可用主题（<name>.theme/ 目录且含 manifest.json），按名排序 */
+/** 列出 themes 下所有可用主题（<id>.theme/ 目录且含 manifest.json），按名排序 */
 export function listThemes(): string[] {
-  const assetsDir = getSkinAssetsDir()
+  const assetsDir = getThemesDir()
   if (!fs.existsSync(assetsDir)) return []
   return fs
     .readdirSync(assetsDir, { withFileTypes: true })
@@ -107,24 +150,21 @@ export function listThemes(): string[] {
 /** 主题名 → 物理目录（<name>.theme/），不存在时报错并列出可用主题 */
 export function getThemeDir(name: string): string {
   const themeName = normalizeThemeName(name)
-  const dir = path.join(getSkinAssetsDir(), themeName + THEME_SUFFIX)
+  const dir = path.join(getThemesDir(), themeName + THEME_SUFFIX)
   if (!fs.existsSync(dir)) {
     const available = listThemes().join(', ') || '(none)'
-    throw new Error(`theme '${themeName}' not found under packages/skin-assets. Available themes: ${available}`)
+    throw new Error(`theme '${themeName}' not found under themes/. Available themes: ${available}`)
   }
   return dir
 }
 
 /**
- * 解析用户选定的主题，优先级：--theme 参数 > SKIN_THEME 环境变量 > 交互式终端选择。
+ * 解析用户选定的主题，优先级：--theme 参数 > CIRNO_THEME 环境变量 > 交互式终端选择。
  * 交互选择只在 TTY 下进行；非 TTY（脚本/CI）时报错并列出可用主题。
  * 0 个主题直接报错。返回归一化后的主题名（无 .theme 后缀）。
- *
- * 注意：主题选择**只发生在 build-tokens**。preview / apply 等其他模块
- * 不调用本函数，一律通过 getActiveTheme() 跟随 build-tokens 选定的主题。
  */
 export async function selectTheme(themeArg?: string): Promise<string> {
-  const explicit = themeArg ?? process.env.SKIN_THEME
+  const explicit = themeArg ?? process.env.CIRNO_THEME
   if (explicit) {
     // 提前校验，错误信息带上可用主题列表
     getThemeDir(explicit)
@@ -133,13 +173,15 @@ export async function selectTheme(themeArg?: string): Promise<string> {
 
   const themes = listThemes()
   if (themes.length === 0) {
-    throw new Error(`no themes found under ${getSkinAssetsDir()}/ — expected <name>${THEME_SUFFIX}/ dirs with manifest.json`)
+    throw new Error(`no themes found under ${getThemesDir()}/ — expected <name>${THEME_SUFFIX}/ dirs with manifest.json`)
   }
+  // 只有一个主题时无需询问
+  if (themes.length === 1) return themes[0]
   if (process.stdin.isTTY) {
     return promptThemeSelection(themes)
   }
   throw new Error(
-    `multiple themes available: ${themes.join(', ')} — pass --theme <name> or set SKIN_THEME=<name>`
+    `multiple themes available: ${themes.join(', ')} — pass --theme <name> or set CIRNO_THEME=<name>`
   )
 }
 
@@ -148,7 +190,7 @@ async function promptThemeSelection(themes: string[]): Promise<string> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
   try {
     for (;;) {
-      console.log(`Available themes in packages/skin-assets (${themes.length}):`)
+      console.log(`Available themes in themes/ (${themes.length}):`)
       for (let i = 0; i < themes.length; i++) {
         console.log(`  ${i + 1}) ${themes[i]}`)
       }

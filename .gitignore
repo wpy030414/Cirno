@@ -1,3 +1,19 @@
-dist
+# 依赖与产物
 node_modules
+dist
+
+# 本地 Agent 工作区（记忆、会话缓存）
+.workbuddy/
+
+# 主题构建产物（由 pnpm theme 生成，随源码重建）
+themes/*.theme/generated
+
+# .NET / WinUI 构建产物
+bin
+obj
+artifacts
+*.user
+
+# 系统
 .DS_Store
+Thumbs.db

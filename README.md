@@ -1,116 +1,62 @@
-# Personalized Agent — Universal Skin Pipeline
+# Cirno
 
-**通用皮肤引擎 monorepo**：将任意原始图片素材 → 按规则取色 → 生成设计 tokens → 应用到任何 GUI Agent。
+一个 Windows 原生的 Agent 座舱：在一个 WinUI 3 窗口里同时驱动多个 Claude Code / Codex 会话。
 
-## 这个项目是什么？
+## 这是什么？
 
-一套把「图片素材 → 可换肤的桌面端 GUI Agent」打通的全自动管线：
-
-- **skin-core**：从图片提取颜色（k-means++ 聚类），生成 **46 个设计 tokens**（light / dark 两套完整方案）
-- **skin-assets**：共享图片库，容纳**多个主题**（`<name>.theme/` 目录），每个主题以 `manifest.json` 统一角色映射 + 取色声明
-- **skins/<target>**：每个目标 app 一个皮肤包，只写 token-mapping + 组件 CSS + 打补丁引擎
+- **定位**：单机桌面应用（Windows 11），面向个人开发者，不做账号体系与云服务。
+- **解决的核心问题**：终端一次只能看一个会话，Electron 壳又改不动；后台任务的进度、审批与结果在系统层完全不可见。
 
 ## 为什么存在？
 
-- **每个 GUI Agent 都要手写皮肤**：重复劳动，无法复用
-- **取色靠人工**：设计师手动挑色，无法自动化
-- **token 命名空间不统一**：每个 app 一套命名，皮肤移植成本高
-
-把「取色」与「适配」解耦后，换新 target 只需写一份 token-mapping 和 CSS。
+- 多任务并行时，「哪个会话在等我审批」应该一眼可见，而不是切窗口找。
+- 每个会话用什么模型、走哪个 provider，界面上必须如实显示。
+- Windows 上的原生姿态（Mica、任务栏、托盘、键盘操作）是终端与 Electron 都给不了的。
+- 主题想要个性就可以有，但默认应当是最干净、最不干扰阅读的样子。
 
 ## 如何安装和运行？
 
-前置：Node.js 20+、pnpm。
+**前置要求**
+
+- Windows 11（22000+，Mica 需要；更低版本降级为纯色）
+- 运行：无（安装包自包含运行时）
+- 开发：.NET 10 SDK、Node.js 20+、pnpm；以及本机已安装 `claude`（Claude Code）与/或 `codex` CLI
+
+**安装（用户）**
+
+- 双击 `Cirno-<version>-x64.msi`，缺系统依赖时安装器会引导补齐。
+
+**安装（开发）**
 
 ```bash
 pnpm install
-
-# 1. 从素材取色生成 tokens（选中主题，未指定则终端交互选择）
-pnpm build-tokens --theme maid-atelier
-
-# 2. 预览取色结果
-pnpm preview
-
-# 3. 给 QwenWork 打皮肤补丁（自动生成 token 映射 + 补丁，跟随 build-tokens 选定的主题）
-pnpm apply:qwenwork
 ```
 
-还原皮肤：把 `app.asar.skin.bak` 覆盖回 `app.asar` 即可（apply 完成后控制台会打印命令）。
+**运行 / 构建**
 
-### 命令集
+```bash
+pnpm theme            # 构建主题资源（取色 → Theme.xaml + 资产）
+pnpm theme:preview    # 预览取色结果
+pnpm theme:all        # 重建全部主题
 
-| 命令 | 说明 |
-|---|---|
-| `pnpm build-tokens` | **主题唯一选择点**：从选中主题的 colorSource 图提取颜色，生成 light+dark 双套 tokens.json（未指定主题则终端交互选择） |
-| `pnpm preview` | 生成 palette.html 可视化预览（簇 + 双套 token，跟随活动主题） |
-| `pnpm apply:qwenwork` | 生成 token 映射 CSS + 给 QwenWorkCN Desktop 打补丁（二进制补丁策略，跟随活动主题） |
-| `pnpm apply:opencode` | 生成 token 映射 CSS + 给 OpenCode Desktop 打补丁（extract/repack 策略，跟随活动主题） |
-| `pnpm apply:codex` | 生成 token 映射（CSS + TOML + 导入串）+ 给 Codex Desktop 换肤（官方 config 通道 + CDP 运行时注入，跟随活动主题；`--pin light\|dark` 仅测试，`--restore` 还原） |
-| `cd packages/skins/<target> && pnpm dev` | 各 skin 包内的 dev 启动器（kill + 带 DevTools/CDP 重启），只在子项目 package.json 里 |
-
-主题选择：**只在 build-tokens**——`--theme <name>` 参数 > `SKIN_THEME` 环境变量 > 终端交互选择；选定主题写入 `dist/tokens.json`，preview / apply 自动跟随。可用主题 = `packages/skin-assets/` 下 `<name>.theme/` 目录。切换主题 = `pnpm build-tokens --theme <name>` 后重跑 apply。
-
-apply 支持参数（透传到各 skin 包）：
-
-| 参数 | 默认 | 含义 |
-|---|---|---|
-| `--no-force` | force=true | 关闭强制重 patch（已打过补丁时报错） |
-| `--no-backup` | false | 跳过备份（仍保留 pristine snapshot 供 --force 使用） |
-| `--allow-running` | false | 不关闭运行中的 app |
-
-## 当前处于什么状态？
-
-- ✅ skin-core：k-means++ 确定性取色（mulberry32 种子 PRNG）+ 46 tokens light/dark 双套生成
-- ✅ skin-assets：多主题结构（`<name>.theme/` × N，各带 manifest）+ 主题交互选择（`--theme` / `SKIN_THEME`）
-- ✅ skins/qwenwork：二进制补丁引擎 + token-mapping（~200 条映射）+ 组件 CSS
-- ✅ skins/opencode：extract/repack 引擎 + token-mapping（~300 条映射）+ 组件 CSS
-- ✅ skins/codex：官方 chrome 配置引擎 + CDP 运行时注入（180 条映射）+ 立绘装饰层（MSIX 受保护目录不碰 asar）
-- ✅ 共享注入：bootstrap 构建 + data URI 图片注入 + `data-skin` 属性保活
-- ✅ 双套对比度达标：light/dark 各渠道 28 项对比度检查全绿
-
-## 使用了哪些核心技术？
-
-| 层 | 技术 | 说明 |
-|---|---|---|
-| 取色 | sharp + k-means++ | 100x100 resize、每 2 像素采样、按 L* 亮度排序 |
-| Token | 固定 schema | 46 tokens（neutral 12 / brand 6 / semantic 12 / text 5 / surface 4 / border 4 / input 2 / accent 1），light+dark 双套 |
-| 映射 | 各 skin 包函数映射 | token-mapping.ts 把通用 tokens 映射到目标 CSS variables（支持计算与 fallback） |
-| 注入 | data: URI + MutationObserver | 图片内联进 HTML，`html[data-skin]` 属性保活 |
-| 打包 | 二进制补丁 / `@electron/asar` | qwenwork 用二进制（unpacked 原生模块），opencode 用 extract/repack |
-| 运行时注入 | CDP（WebSocket，仅回环） | codex 用 COM 激活传参启动 + 运行时注入（MSIX 受保护目录不碰 asar） |
-| 运行时 | `tsx` (ES2022 + NodeNext) | TypeScript 直接执行，无编译步骤 |
-
-## 项目结构
-
+# 应用本体（M0 进行中）
+dotnet build apps/Cirno.slnx
 ```
-personalized-agent/
-├── package.json                # 根：路由脚本
-├── pnpm-workspace.yaml         # monorepo workspace
-├── README.md / AGENTS.md       # 项目总览（唯一文档入口）
-├── scripts/
-│   ├── dev-qwenwork.mjs        # kill + open --enable-devtools
-│   └── dev-opencode.mjs
-├── packages/
-│   ├── skin-core/              # 通用管线（取色 + token 生成 + 共享注入）
-│   │   └── src/
-│   │       ├── index.ts             # 入口 buildTokens() + CLI
-│   │       ├── types.ts             # TOKEN_KEYS（46 个）/ Tokens / BuildOptions
-│   │       ├── extract-colors.ts    # k-means++ 取色（确定性）
-│   │       ├── generate-tokens.ts   # 簇 → light/dark 双套 tokens
-│   │       ├── assets-loader.ts     # manifest 加载（roles + colorSource）
-│   │       ├── bootstrap-builder.ts # 共享 bootstrap HTML 片段生成
-│   │       ├── inject.js            # data-skin 属性保活（共享）
-│   │       └── palette-preview.ts   # HTML 预览生成
-│   ├── skin-assets/            # 共享图片资产（纯静态）
-│   └── skins/
-│       ├── qwenwork/           # QwenWork 实现
-│       │   └── src/{index,patch-asar,token-mapping}.ts + skin.css
-│       └── opencode/           # OpenCode 实现
-│       └── codex/              # Codex Desktop 实现
-│           └── src/{index,patch-asar,token-mapping}.ts + skin.css
-└── docs/
-    ├── PRD.md                  # 产品需求（为什么做、做什么）
-    ├── ARCHITECTURE.md         # 系统组织（三层架构、数据流）
-    ├── DECISIONS.md            # 设计决策记录（历史上下文）
-    └── specs/                  # 模块级实现契约
-```
+
+## 当前状态
+
+- **阶段**：重构期（M0）。Electron 皮肤引擎已删除，应用外壳尚未落地。
+- 已就绪：主题管线（取色 → 46 token → WinUI 资源字典 → 位图资产 → 主题注册表）。
+- **已知限制**：应用本体、会话管理、两个后端适配器、任务栏集成均未实现；详见 `docs/PRD.md` 的里程碑。
+- 本机开发环境注意：需要安装 .NET 10 SDK（当前机器只有运行时）。
+
+## 核心技术
+
+- **运行期**：C# / .NET 10、WinUI 3（Windows App SDK 2.x）、Fluent 2、Mica、CommunityToolkit.Mvvm、SQLite、CsWin32 / Win2D。
+- **构建期**：Node.js / TypeScript（主题管线）、sharp（取色与位图转码）。
+- **后端**：Claude Code CLI（stream-json）、Codex app-server（JSON-RPC over stdio）。
+- **分发**：MSI（自包含发布 + 依赖自举）。
+
+---
+
+文档入口：`docs/PRD.md`（做什么）、`docs/ARCHITECTURE.md`（怎么组织）、`docs/DECISIONS.md`（为什么）、`docs/specs/`（模块契约）。
