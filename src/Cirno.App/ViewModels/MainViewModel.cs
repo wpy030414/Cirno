@@ -23,6 +23,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private SessionViewModel? _active;
     private string _defaultProviderId;
+    private string? _newSessionModel;
 
     public MainViewModel(
         string databasePath,
@@ -74,6 +75,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public string DefaultProviderLabel
         => Orchestrator.GetBackend(_defaultProviderId)?.DisplayName ?? _defaultProviderId;
 
+    /// <summary>新建会话使用的模型；null 表示跟随后端默认。</summary>
+    public string? NewSessionModel
+    {
+        get => _newSessionModel;
+        set => Set(ref _newSessionModel, value);
+    }
+
     public SessionViewModel? ActiveSession
     {
         get => _active;
@@ -101,9 +109,15 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RecomputeSummary();
     }
 
-    public SessionViewModel CreateSession(string workingDirectory, string? providerId = null)
+    public SessionViewModel CreateSession(
+        string workingDirectory,
+        string? providerId = null,
+        string? model = null)
     {
-        var record = Orchestrator.CreateSession(providerId ?? DefaultProviderId, workingDirectory);
+        var record = Orchestrator.CreateSession(
+            providerId ?? DefaultProviderId,
+            workingDirectory,
+            model ?? NewSessionModel);
         var vm = CreateViewModel(record);
         Sessions.Insert(0, vm);
         ActiveSession = vm;

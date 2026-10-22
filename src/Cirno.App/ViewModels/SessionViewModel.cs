@@ -29,6 +29,7 @@ public sealed class SessionViewModel : ObservableObject
     private string _usageText = string.Empty;
     private bool _isBusy;
     private bool _historyLoaded;
+    private string? _reportedModel;
     private AgentSessionState _state = AgentSessionState.Idle;
 
     public SessionViewModel(
@@ -149,7 +150,8 @@ public sealed class SessionViewModel : ObservableObject
         OnPropertyChanged(nameof(WorkingDirectory));
         OnPropertyChanged(nameof(ProviderLabel));
         OnPropertyChanged(nameof(SubtitleLine));
-        if (!string.IsNullOrWhiteSpace(record.Model))
+        // 后端回报的实际模型优先于创建时的入参（别名会被解析成具体版本）
+        if (_reportedModel is null && !string.IsNullOrWhiteSpace(record.Model))
         {
             ModelText = record.Model;
         }
@@ -206,6 +208,7 @@ public sealed class SessionViewModel : ObservableObject
             case SessionInitEvent init:
                 if (!string.IsNullOrWhiteSpace(init.Info.Model))
                 {
+                    _reportedModel = init.Info.Model;
                     ModelText = init.Info.Model!;
                 }
 

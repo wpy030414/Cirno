@@ -43,6 +43,35 @@
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
             </Style>
 
+            <!-- TextBlock 在 WinUI 没有 Background，行底色由外层 Border 提供 -->
+            <Style x:Key="DiffAddRowStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource SystemFillColorSuccessBackgroundBrush}" />
+                <Setter Property="Padding" Value="4,0" />
+            </Style>
+
+            <Style x:Key="DiffRemoveRowStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource SystemFillColorCriticalBackgroundBrush}" />
+                <Setter Property="Padding" Value="4,0" />
+            </Style>
+
+            <Style x:Key="DiffAddTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CodeBlockTextStyle}">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}" />
+            </Style>
+
+            <Style x:Key="DiffRemoveTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CodeBlockTextStyle}">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+            </Style>
+
+            <Style x:Key="DiffContextTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CodeBlockTextStyle}">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="Padding" Value="4,0" />
+            </Style>
+
+            <Style x:Key="MessageBodyMetaStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
+            </Style>
+
             <Style x:Key="MetaTextStyle" TargetType="TextBlock">
                 <Setter Property="FontSize" Value="11.5" />
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />

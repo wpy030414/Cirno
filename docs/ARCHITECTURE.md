@@ -107,8 +107,12 @@ themes/<id>.theme/manifest.json（roles + colorSource + displayName）
 
 ### 渲染与性能
 
-- 时间线为虚拟化列表，只实例化可视区附近条目。
-- 流式增量不逐 token 刷新 UI：写入缓冲后按固定帧率合帧提交。
+- 时间线为虚拟化列表（ListView + 模板选择器），只实例化可视区附近条目。
+- 流式增量不逐 token 刷新 UI：写入缓冲后按 33ms 合帧提交。
+- 流式期间正文走**纯文本快路径**（单个 TextBlock），流结束后才解析 Markdown 重建块；
+  否则长回答每个合帧周期都会重建整棵控件树。
+- 文件变更单独用 `DiffBody` 渲染：按行分类为新增/删除/上下文，行底色由外层 Border 提供
+  （WinUI 的 TextBlock 没有 Background）。
 - Markdown 按块渲染：未闭合代码块走纯文本快速路径，闭合后再高亮。
 - 目标：冷启动 < 1.5s 可交互；万条消息滚动不掉帧；材质不可用时降级为纯色不崩。
 

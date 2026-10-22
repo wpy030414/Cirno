@@ -16,6 +16,8 @@ public sealed partial class TimelineTemplateSelector : DataTemplateSelector
 
     public DataTemplate? ApprovalTemplate { get; set; }
 
+    public DataTemplate? FileChangeTemplate { get; set; }
+
     public DataTemplate? NoticeTemplate { get; set; }
 
     public DataTemplate? ErrorTemplate { get; set; }
@@ -35,6 +37,7 @@ public sealed partial class TimelineTemplateSelector : DataTemplateSelector
             AgentItemKind.UserMessage => UserTemplate,
             AgentItemKind.AssistantMessage => AssistantTemplate,
             AgentItemKind.Approval => ApprovalTemplate,
+            AgentItemKind.FileChange => FileChangeTemplate,
             AgentItemKind.Notice => NoticeTemplate,
             AgentItemKind.Error or AgentItemKind.Unknown => ErrorTemplate,
             _ => ToolTemplate,

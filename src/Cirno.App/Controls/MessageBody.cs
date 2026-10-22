@@ -19,10 +19,23 @@ public sealed class MessageBody : ContentControl
         typeof(MessageBody),
         new PropertyMetadata(string.Empty, OnTextChanged));
 
+    public static readonly DependencyProperty IsStreamingProperty = DependencyProperty.Register(
+        nameof(IsStreaming),
+        typeof(bool),
+        typeof(MessageBody),
+        new PropertyMetadata(false, OnTextChanged));
+
     public MessageBody()
     {
         IsTabStop = false;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
+    }
+
+    /// <summary>流式期间走纯文本快路径：不解析 Markdown、不重建控件树。</summary>
+    public bool IsStreaming
+    {
+        get => (bool)GetValue(IsStreamingProperty);
+        set => SetValue(IsStreamingProperty, value);
     }
 
     public string Text
@@ -36,8 +49,32 @@ public sealed class MessageBody : ContentControl
 
     private void Rebuild()
     {
-        var panel = new StackPanel { Spacing = 6 };
         var text = Text ?? string.Empty;
+
+        // 流式期间每个合帧周期都会变文本：只更新一个 TextBlock，
+        // 等流结束再解析 Markdown。否则长回答会持续重建控件树。
+        if (IsStreaming)
+        {
+            if (Content is TextBlock { Tag: "stream" } streamingBlock)
+            {
+                streamingBlock.Text = text;
+            }
+            else
+            {
+                Content = new TextBlock
+                {
+                    Tag = "stream",
+                    Text = text,
+                    Style = StyleOf("MessageBodyTextStyle"),
+                    IsTextSelectionEnabled = true,
+                    TextWrapping = TextWrapping.Wrap,
+                };
+            }
+
+            return;
+        }
+
+        var panel = new StackPanel { Spacing = 6 };
 
         if (text.Length == 0)
         {

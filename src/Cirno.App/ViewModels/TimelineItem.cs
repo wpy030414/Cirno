@@ -19,6 +19,8 @@ public sealed class TimelineItem : ObservableObject
     private bool _isError;
     private ApprovalState _approvalState = ApprovalState.Pending;
 
+    private bool _isExpanded;
+
     public TimelineItem(AgentItem item)
     {
         Id = item.Id;
@@ -29,6 +31,9 @@ public sealed class TimelineItem : ObservableObject
         _isStreaming = item.IsStreaming;
         _isError = item.IsError;
         Timestamp = item.Timestamp;
+
+        // 文件变更默认展开：diff 是这一条的信息本体，藏起来等于没渲染
+        _isExpanded = item.Kind == AgentItemKind.FileChange;
     }
 
     public string Id { get; }
@@ -108,6 +113,12 @@ public sealed class TimelineItem : ObservableObject
                 OnPropertyChanged(nameof(ApprovalResultVisibility));
             }
         }
+    }
+
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set => Set(ref _isExpanded, value);
     }
 
     public bool HasText => _text.Length > 0;

@@ -539,7 +539,10 @@ public sealed class ClaudeSession : IAgentSession
                 baseItem = existing;
             }
 
-            var detail = string.IsNullOrWhiteSpace(resultText)
+            // 文件变更的 Detail 就是 diff 本体，成功回执（"updated successfully"）
+            // 混进去会变成一堆无意义的上下文行；只在出错时保留错误信息。
+            var keepResult = baseItem.Kind != AgentItemKind.FileChange || isError;
+            var detail = !keepResult || string.IsNullOrWhiteSpace(resultText)
                 ? baseItem.Detail
                 : string.IsNullOrWhiteSpace(baseItem.Detail)
                     ? resultText

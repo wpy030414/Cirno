@@ -47,7 +47,7 @@
                             IsActive="{Binding IsStreaming}"
                             Visibility="{Binding IsStreaming, Converter={StaticResource BoolToVisibility}}" />
                     </StackPanel>
-                    <controls:MessageBody Text="{Binding Text}" />
+                    <controls:MessageBody IsStreaming="{Binding IsStreaming}" Text="{Binding Text}" />
                 </StackPanel>
             </DataTemplate>
 
@@ -86,7 +86,41 @@
                 </Expander>
             </DataTemplate>
 
-            <DataTemplate x:Key="ApprovalItemTemplate">
+            <DataTemplate x:Key="FileChangeItemTemplate">
+            <Expander
+                IsExpanded="{Binding IsExpanded, Mode=TwoWay}"
+                Margin="0,3"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch">
+                <Expander.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Border
+                            Padding="6,1"
+                            VerticalAlignment="Center"
+                            Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                            CornerRadius="4">
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="文件变更" />
+                        </Border>
+                        <TextBlock
+                            MaxWidth="520"
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{Binding Summary}"
+                            TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Expander.Header>
+                <controls:DiffBody
+                    Margin="0,4,0,2"
+                    Text="{Binding Detail}"
+                    Visibility="{Binding HasDetail, Converter={StaticResource BoolToVisibility}}" />
+            </Expander>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ApprovalItemTemplate">
                 <Border
                     Margin="0,10,0,6"
                     Padding="14,12"
@@ -194,6 +228,7 @@
                 ApprovalTemplate="{StaticResource ApprovalItemTemplate}"
                 AssistantTemplate="{StaticResource AssistantItemTemplate}"
                 ErrorTemplate="{StaticResource ErrorItemTemplate}"
+                FileChangeTemplate="{StaticResource FileChangeItemTemplate}"
                 NoticeTemplate="{StaticResource NoticeItemTemplate}"
                 ToolTemplate="{StaticResource ToolItemTemplate}"
                 UserTemplate="{StaticResource UserItemTemplate}" />
@@ -219,7 +254,7 @@
                         <TextBlock
                             FontSize="11"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="M2" />
+                            Text="M5" />
                     </Border>
                 </StackPanel>
             </Grid>
@@ -306,7 +341,7 @@
                         <TextBlock
                             FontSize="11"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                            Text="M2 · 多会话 · 本地持久化" />
+                            Text="M5 · 原生渲染 · 键盘全流程" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -344,9 +379,15 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <!-- 会话状态条 -->
-                    <Grid Grid.Row="0" Padding="24,8,24,4">
+                    <!-- 会话状态条：左右两列，避免长文字互相压住 -->
+                    <Grid Grid.Row="0" Padding="24,8,24,4" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
                         <StackPanel
+                            Grid.Column="0"
                             VerticalAlignment="Center"
                             Orientation="Horizontal"
                             Spacing="10">
@@ -359,15 +400,30 @@
                                 Width="1"
                                 Height="12"
                                 Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                            <TextBlock Style="{StaticResource MetaTextStyle}" Text="{Binding ModelText}" />
-                            <TextBlock Style="{StaticResource MetaTextStyle}" Text="{Binding UsageText}" />
+                            <TextBlock
+                                MaxWidth="180"
+                                Style="{StaticResource MetaTextStyle}"
+                                Text="{Binding ModelText}"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                MaxWidth="220"
+                                Style="{StaticResource MetaTextStyle}"
+                                Text="{Binding UsageText}"
+                                TextTrimming="CharacterEllipsis" />
                         </StackPanel>
 
                         <StackPanel
+                            Grid.Column="1"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Center"
                             Orientation="Horizontal"
                             Spacing="8">
+                            <ComboBox
+                                x:Name="ModelPicker"
+                                MinWidth="132"
+                                FontSize="12"
+                                SelectionChanged="OnModelSelectionChanged"
+                                ToolTipService.ToolTip="新建会话使用的模型（模型是进程级属性，已有会话不变）" />
                             <ComboBox
                                 x:Name="ProviderPicker"
                                 MinWidth="118"

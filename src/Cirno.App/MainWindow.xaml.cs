@@ -87,6 +87,28 @@ public sealed partial class MainWindow : Window
 
         _main.ActiveSessionChanged += OnActiveSessionChanged;
         SessionList.ItemsSource = _main.Sessions;
+
+        var models = new List<ModelOption>
+        {
+            new("默认模型", null),
+            new("sonnet", "sonnet"),
+            new("opus", "opus"),
+            new("haiku", "haiku"),
+        };
+
+        if (ReadArgument("--model") is { } modelArg &&
+            models.All(m => !string.Equals(m.Value, modelArg, StringComparison.OrdinalIgnoreCase)))
+        {
+            models.Add(new ModelOption(modelArg, modelArg));
+        }
+
+        ModelPicker.ItemsSource = models;
+        var initialModel = ReadArgument("--model");
+        ModelPicker.SelectedItem = models.FirstOrDefault(m =>
+            string.Equals(m.Value, initialModel, StringComparison.OrdinalIgnoreCase)) ?? models[0];
+        _main.NewSessionModel = (ModelPicker.SelectedItem as ModelOption)?.Value;
+
+        RegisterAccelerators();
         ProviderPicker.ItemsSource = _main.Backends;
         ProviderPicker.SelectedItem = _main.Backends.FirstOrDefault(b => b.Id == _main.DefaultProviderId);
 
@@ -216,6 +238,56 @@ public sealed partial class MainWindow : Window
 
     private void OnNewSessionClick(object sender, RoutedEventArgs e)
         => _main.CreateSession(_main.ResolveWorkingDirectory());
+
+    private void OnModelSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_ready && ModelPicker.SelectedItem is ModelOption option)
+        {
+            _main.NewSessionModel = option.Value;
+        }
+    }
+
+    /// <summary>键盘全流程：新建、切会话、中断、聚焦输入，都不需要鼠标。</summary>
+    private void RegisterAccelerators()
+    {
+        AddAccelerator(VirtualKey.N, VirtualKeyModifiers.Control, () => _main.CreateSession(_main.ResolveWorkingDirectory()));
+        AddAccelerator(VirtualKey.K, VirtualKeyModifiers.Control, () => Composer.Focus(FocusState.Programmatic));
+        AddAccelerator(VirtualKey.Escape, VirtualKeyModifiers.None, () =>
+        {
+            if (_active is { IsBusy: true })
+            {
+                _ = _active.InterruptAsync();
+            }
+        });
+
+        for (var i = 1; i <= 9; i++)
+        {
+            var index = i;
+            AddAccelerator(
+                VirtualKey.Number1 + (i - 1),
+                VirtualKeyModifiers.Control,
+                () => SelectSession(index));
+        }
+    }
+
+    private void AddAccelerator(VirtualKey key, VirtualKeyModifiers modifiers, Action action)
+    {
+        var accelerator = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
+        accelerator.Invoked += (_, args) =>
+        {
+            args.Handled = true;
+            action();
+        };
+        RootGrid.KeyboardAccelerators.Add(accelerator);
+    }
+
+    private void SelectSession(int oneBasedIndex)
+    {
+        if (oneBasedIndex >= 1 && oneBasedIndex <= _main.Sessions.Count)
+        {
+            _main.ActiveSession = _main.Sessions[oneBasedIndex - 1];
+        }
+    }
 
     private async void OnPickFolderClick(object sender, RoutedEventArgs e)
     {
