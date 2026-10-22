@@ -15,15 +15,20 @@ public sealed class SessionOrchestrator : IAsyncDisposable
 
     private readonly SessionStore _store;
     private readonly Dictionary<string, IAgentBackend> _backends;
+    private readonly Action<int>? _onProcessStarted;
     private readonly Dictionary<string, Runtime> _runtimes = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _slots = new(MaxConcurrentSessions, MaxConcurrentSessions);
     private readonly object _gate = new();
     private bool _disposed;
 
-    public SessionOrchestrator(SessionStore store, IEnumerable<IAgentBackend> backends)
+    public SessionOrchestrator(
+        SessionStore store,
+        IEnumerable<IAgentBackend> backends,
+        Action<int>? onProcessStarted = null)
     {
         _store = store;
         _backends = backends.ToDictionary(b => b.Id, StringComparer.OrdinalIgnoreCase);
+        _onProcessStarted = onProcessStarted;
     }
 
     /// <summary>归一化事件（适配器线程）。订阅方须自行切回 UI 线程。</summary>
@@ -92,6 +97,7 @@ public sealed class SessionOrchestrator : IAsyncDisposable
             WorkingDirectory = runtime.Record.WorkingDirectory,
             Model = runtime.Record.Model,
             ResumeSessionId = runtime.Record.BackendSessionId,
+            OnProcessStarted = _onProcessStarted,
         });
 
         session.EventReceived += evt => OnSessionEvent(sessionId, evt);

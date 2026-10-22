@@ -5,5 +5,6 @@
   <Project Path="../src/Cirno.Agents.Abstractions/Cirno.Agents.Abstractions.csproj" />
   <Project Path="../src/Cirno.Agents.Claude/Cirno.Agents.Claude.csproj" />
   <Project Path="../src/Cirno.Core/Cirno.Core.csproj" />
+  <Project Path="../src/Cirno.Shell.Windows/Cirno.Shell.Windows.csproj" />
   <Project Path="../src/Cirno.App/Cirno.App.csproj" />
 </Solution>

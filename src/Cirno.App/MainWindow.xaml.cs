@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using Cirno.Agents.Claude;
 using Cirno.App.Services;
 using Cirno.App.ViewModels;
+using Cirno.Shell.Windows;
 using Microsoft.UI;
 using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
@@ -19,6 +20,7 @@ namespace Cirno.App;
 public sealed partial class MainWindow : Window
 {
     private readonly ThemeService _themes = new();
+    private readonly ShellIntegration _shell = new();
     private readonly MainViewModel _main;
     private SessionViewModel? _active;
     private bool _isDark;
@@ -53,13 +55,35 @@ public sealed partial class MainWindow : Window
             "Cirno",
             "cirno.db");
 
+        // 外壳集成：任务栏/托盘/子进程托管。必须在窗口句柄就绪之后。
+        if (ReadArgument("--trace") is { } shellTrace)
+        {
+            _shell.Diagnostics = message => AppendShellTrace(shellTrace, message);
+        }
+
+        _shell.Attach(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        _shell.ShowRequested += RestoreWindow;
+        _shell.NewSessionRequested += () => _main.CreateSession(_main.ResolveWorkingDirectory());
+        _shell.ExitRequested += Close;
+
         _main = new MainViewModel(
             databasePath,
             [new ClaudeBackend()],
             DispatcherQueue,
             autoApprove: HasFlag("--auto-approve"),
             tracePath: ReadArgument("--trace"),
-            preferredProviderId: ReadArgument("--provider"));
+            preferredProviderId: ReadArgument("--provider"),
+            onProcessStarted: pid =>
+            {
+                var assigned = _shell.AssignProcessToJob(pid);
+                if (ReadArgument("--trace") is { } tracePath)
+                {
+                    AppendShellTrace(tracePath, $"job-assign pid={pid} ok={assigned}");
+                }
+            });
+
+        _main.SummaryChanged += summary => _shell.Update(
+            new ShellStatus(summary.Total, summary.Running, summary.AwaitingApproval, summary.Failed));
 
         _main.ActiveSessionChanged += OnActiveSessionChanged;
         SessionList.ItemsSource = _main.Sessions;
@@ -134,7 +158,19 @@ public sealed partial class MainWindow : Window
 
     private async void OnWindowClosed(object sender, WindowEventArgs args)
     {
+        // 先优雅释放会话（回绝挂起审批、关 stdin），再由 Job Object 兜底清理进程树
         await _main.DisposeAsync();
+        _shell.Dispose();
+    }
+
+    private void RestoreWindow()
+    {
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.Restore();
+        }
+
+        Activate();
     }
 
     // ---------- 会话切换 ----------
@@ -370,6 +406,27 @@ public sealed partial class MainWindow : Window
         }
 
         return null;
+    }
+
+    /// <summary>开发期自检：外壳状态与归一化事件写同一个 trace 流。</summary>
+    private static void AppendShellTrace(string path, string message)
+    {
+        try
+        {
+            File.AppendAllText(
+                path,
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    ts = DateTimeOffset.Now.ToString("HH:mm:ss.fff"),
+                    session = "shell",
+                    evt = "ShellState",
+                    text = message,
+                }) + Environment.NewLine);
+        }
+        catch
+        {
+            // 自检通道，失败不影响主链路
+        }
     }
 
     private static bool HasFlag(string name)

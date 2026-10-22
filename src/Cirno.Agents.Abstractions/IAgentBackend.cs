@@ -48,4 +48,10 @@ public sealed record AgentSessionOptions
     public string? PermissionMode { get; init; }
     /// <summary>恢复已有后端会话时使用。</summary>
     public string? ResumeSessionId { get; init; }
+
+    /// <summary>
+    /// 子进程启动后的回调（参数为 PID）。宿主用它把进程加入 Job Object，
+    /// 保证 Cirno 异常退出时不留下孤儿进程。适配器不关心回调做了什么。
+    /// </summary>
+    public Action<int>? OnProcessStarted { get; init; }
 }

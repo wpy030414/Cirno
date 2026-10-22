@@ -255,7 +255,7 @@
                 Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                 BorderThickness="0,0,1,0">
-                <Grid x:Name="SessionHost">
+                <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
@@ -337,7 +337,7 @@
                         Stretch="Uniform" />
                 </Grid>
 
-                <Grid>
+                <Grid x:Name="SessionHost">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />

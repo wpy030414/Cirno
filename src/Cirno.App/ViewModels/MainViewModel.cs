@@ -7,6 +7,9 @@ using Microsoft.UI.Dispatching;
 
 namespace Cirno.App.ViewModels;
 
+/// <summary>会话状态聚合，供任务栏/托盘呈现。界面之外的消费者只需要这几个数字。</summary>
+public sealed record SessionSummary(int Total, int Running, int AwaitingApproval, int Failed);
+
 /// <summary>
 /// 应用级视图模型：会话列表、当前会话、新建/删除。
 /// 编排与持久化都在 Core 里，这里只负责把状态搬到界面。
@@ -27,14 +30,15 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         DispatcherQueue dispatcher,
         bool autoApprove,
         string? tracePath,
-        string? preferredProviderId = null)
+        string? preferredProviderId = null,
+        Action<int>? onProcessStarted = null)
     {
         _dispatcher = dispatcher;
         _autoApprove = autoApprove;
         _tracePath = tracePath;
 
         _store = new SessionStore(databasePath);
-        Orchestrator = new SessionOrchestrator(_store, backends);
+        Orchestrator = new SessionOrchestrator(_store, backends, onProcessStarted);
         Orchestrator.SessionEvent += OnSessionEvent;
         Orchestrator.SessionChanged += OnSessionChanged;
         Orchestrator.SessionStateChanged += OnSessionStateChanged;
@@ -51,6 +55,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public IReadOnlyList<IAgentBackend> Backends => Orchestrator.Backends;
 
     public event EventHandler? ActiveSessionChanged;
+
+    /// <summary>会话状态聚合变化（总数/运行/待审批/失败）。</summary>
+    public event Action<SessionSummary>? SummaryChanged;
 
     public string DefaultProviderId
     {
@@ -91,6 +98,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         ActiveSession = Sessions.FirstOrDefault();
+        RecomputeSummary();
     }
 
     public SessionViewModel CreateSession(string workingDirectory, string? providerId = null)
@@ -99,13 +107,16 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var vm = CreateViewModel(record);
         Sessions.Insert(0, vm);
         ActiveSession = vm;
+        RecomputeSummary();
         return vm;
     }
 
     public async Task DeleteAsync(SessionViewModel session)
     {
         await Orchestrator.DeleteAsync(session.Id);
+        session.StateChanged -= RecomputeSummary;
         Sessions.Remove(session);
+        RecomputeSummary();
 
         if (ReferenceEquals(ActiveSession, session))
         {
@@ -136,7 +147,21 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     private SessionViewModel CreateViewModel(Cirno.Core.Models.SessionRecord record)
-        => new(Orchestrator, record, _dispatcher, _autoApprove, _tracePath);
+    {
+        var vm = new SessionViewModel(Orchestrator, record, _dispatcher, _autoApprove, _tracePath);
+        vm.StateChanged += RecomputeSummary;
+        return vm;
+    }
+
+    private void RecomputeSummary()
+    {
+        var running = Sessions.Count(s =>
+            s.State is AgentSessionState.Running or AgentSessionState.Queued);
+        var awaiting = Sessions.Count(s => s.State == AgentSessionState.AwaitingApproval);
+        var failed = Sessions.Count(s => s.State == AgentSessionState.Failed);
+
+        SummaryChanged?.Invoke(new SessionSummary(Sessions.Count, running, awaiting, failed));
+    }
 
     private void OnSessionEvent(string sessionId, AgentEvent evt)
     {

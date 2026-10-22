@@ -77,6 +77,8 @@ dotnet build apps/Cirno.slnx -p:Platform=x64   # 应用可编译
 - `apps/` — 解决方案文件
 - `src/Cirno.App/` — WinUI 3 可执行：窗口、视图、ViewModel、主题装配
 - `src/Cirno.Core/` — 会话编排（`SessionOrchestrator`）与 SQLite 持久化（`SessionStore`）
+- 外壳状态用 `--trace` 断言：日志里 `evt=ShellState` 会带 `taskbar-ready` / `progress-ok` / `badge` / `overlay-ok` / `tray-visible` / `job-assign`。
 - `src/Cirno.Agents.Abstractions/` — 归一化事件模型与 `IAgentBackend` 契约（零 UI 依赖）
 - `src/Cirno.Agents.Claude/` — Claude Code stream-json 与 control 协议适配
-- `src/Cirno.Agents.Codex/` — Codex app-server 适配（M3 起落地）
+- `src/Cirno.Agents.Codex/` — Codex app-server 适配（M3，按用户决定暂缓）
+- `src/Cirno.Shell.Windows/` — 任务栏、托盘、Job Object；不引用 Core，也不知道「会话」是什么

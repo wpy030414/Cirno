@@ -90,6 +90,9 @@ public sealed class ClaudeSession : IAgentSession
             throw new InvalidOperationException("claude 进程启动失败。");
         }
 
+        // 交给宿主托管（Job Object）。放在启动后立刻执行，缩小孤儿进程窗口。
+        _options.OnProcessStarted?.Invoke(_process.Id);
+
         _stdin = new StreamWriter(_process.StandardInput.BaseStream, new UTF8Encoding(false))
         {
             AutoFlush = true,

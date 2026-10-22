@@ -29,6 +29,7 @@ public sealed class SessionViewModel : ObservableObject
     private string _usageText = string.Empty;
     private bool _isBusy;
     private bool _historyLoaded;
+    private AgentSessionState _state = AgentSessionState.Idle;
 
     public SessionViewModel(
         SessionOrchestrator orchestrator,
@@ -98,6 +99,11 @@ public sealed class SessionViewModel : ObservableObject
         get => _usageText;
         private set => Set(ref _usageText, value);
     }
+
+    public AgentSessionState State => _state;
+
+    /// <summary>状态变化（供外壳聚合任务栏/托盘状态）。</summary>
+    public event Action? StateChanged;
 
     public bool IsBusy
     {
@@ -169,8 +175,7 @@ public sealed class SessionViewModel : ObservableObject
                 Text = ex.Message,
                 IsError = true,
             });
-            IsBusy = false;
-            StatusText = "失败";
+            ApplyState(AgentSessionState.Failed);
         }
     }
 
@@ -207,8 +212,7 @@ public sealed class SessionViewModel : ObservableObject
                 break;
 
             case TurnStartedEvent:
-                IsBusy = true;
-                StatusText = "运行中";
+                ApplyState(AgentSessionState.Running);
                 break;
 
             case ItemStartedEvent started:
@@ -233,8 +237,7 @@ public sealed class SessionViewModel : ObservableObject
                     Detail = approval.Request.Detail,
                     ToolName = approval.Request.ToolName,
                 });
-                IsBusy = true;
-                StatusText = "等待审批";
+                ApplyState(AgentSessionState.AwaitingApproval);
 
                 if (AutoApprove)
                 {
@@ -260,10 +263,20 @@ public sealed class SessionViewModel : ObservableObject
 
             case TurnCompletedEvent turn:
                 UsageText = $"↑ {turn.Result.InputTokens:N0} · ↓ {turn.Result.OutputTokens:N0} · ${turn.Result.CostUsd:F3}";
-                IsBusy = false;
-                StatusText = turn.Result.StopReason is null
-                    ? "已中断"
-                    : turn.Result.IsError ? "本轮出错" : "空闲";
+                if (turn.Result.StopReason is null)
+                {
+                    ApplyState(AgentSessionState.Interrupted);
+                }
+                else
+                {
+                    ApplyState(AgentSessionState.Idle);
+                    if (turn.Result.IsError)
+                    {
+                        // 单轮出错不等于会话失败：保留就是绪态，只在文案上体现
+                        StatusText = "本轮出错";
+                    }
+                }
+
                 break;
 
             case AgentFaultEvent fault:
@@ -274,8 +287,7 @@ public sealed class SessionViewModel : ObservableObject
                     Text = fault.Error.Message,
                     IsError = true,
                 });
-                IsBusy = false;
-                StatusText = "失败";
+                ApplyState(AgentSessionState.Failed);
                 break;
 
             case SessionStateChangedEvent state:
@@ -284,9 +296,10 @@ public sealed class SessionViewModel : ObservableObject
         }
     }
 
-    /// <summary>编排层状态（排队等）。</summary>
+    /// <summary>状态推进：唯一的状态写入点。</summary>
     public void ApplyState(AgentSessionState state)
     {
+        _state = state;
         StatusText = state switch
         {
             AgentSessionState.Queued => "等待中",
@@ -308,6 +321,8 @@ public sealed class SessionViewModel : ObservableObject
         {
             IsBusy = false;
         }
+
+        StateChanged?.Invoke();
     }
 
     private void Upsert(AgentItem item)
