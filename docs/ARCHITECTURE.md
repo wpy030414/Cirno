@@ -134,8 +134,11 @@ themes/<id>.theme/manifest.json（roles + colorSource + displayName）
 
 ### 持久化
 
-- SQLite（WAL）+ 全文索引：会话元数据、归一化条目、审批记录。
+- SQLite（WAL）：`sessions`（元数据、后端会话 id、provider、cwd）+ `items`（归一化条目，按 seq 排序）。
+  库文件在 `%LOCALAPPDATA%\Cirno\cirno.db`，可整体删除即回到干净状态。
 - 后端历史仍是恢复真相源；本地库是渲染与检索用的副本，可从后端历史重建。
+- 还原是惰性的：启动只读会话列表，点开某个会话才读它的条目；不启动任何后端进程，
+  首次发送时才按 `ResumeSessionId` 恢复。
 - 凭据单独存放于 Windows 凭据管理器。
 
 ### Provider 与模型

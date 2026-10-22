@@ -22,6 +22,8 @@ public enum AgentItemKind
 public enum AgentSessionState
 {
     Starting,
+    /// <summary>已排队：并发上限已满，等待空位。</summary>
+    Queued,
     Idle,
     Running,
     AwaitingApproval,

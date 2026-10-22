@@ -164,6 +164,31 @@
                 </Border>
             </DataTemplate>
 
+            <DataTemplate x:Key="SessionItemTemplate">
+                <Grid Padding="8,7" RowSpacing="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock
+                        FontSize="13"
+                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                        Text="{Binding Title}"
+                        TextTrimming="CharacterEllipsis" />
+                    <TextBlock
+                        Grid.Row="1"
+                        FontSize="11"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        Text="{Binding SubtitleLine}"
+                        TextTrimming="CharacterEllipsis" />
+                    <Grid.ContextFlyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem Click="OnDeleteSessionClick" Text="删除会话" />
+                        </MenuFlyout>
+                    </Grid.ContextFlyout>
+                </Grid>
+            </DataTemplate>
+
             <views:TimelineTemplateSelector
                 x:Key="TimelineTemplates"
                 ApprovalTemplate="{StaticResource ApprovalItemTemplate}"
@@ -194,7 +219,7 @@
                         <TextBlock
                             FontSize="11"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="M1" />
+                            Text="M2" />
                     </Border>
                 </StackPanel>
             </Grid>
@@ -230,14 +255,14 @@
                 Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                 BorderThickness="0,0,1,0">
-                <Grid>
+                <Grid x:Name="SessionHost">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <Grid Margin="16,12,12,8">
+                    <Grid Margin="16,12,8,6">
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
@@ -245,42 +270,31 @@
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Text="会话" />
                         <Button
-                            Padding="8,3"
+                            x:Name="NewSessionButton"
+                            Padding="8,2"
                             HorizontalAlignment="Right"
                             AutomationProperties.Name="新建会话"
+                            Click="OnNewSessionClick"
                             Content="+"
-                            IsEnabled="False"
-                            ToolTipService.ToolTip="多会话管理将在 M2 接入" />
+                            ToolTipService.ToolTip="在当前目录新建会话" />
                     </Grid>
 
-                    <StackPanel Grid.Row="1" Margin="12,0,12,0" Spacing="6">
-                        <Border
-                            Padding="12,10"
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="8">
-                            <StackPanel Spacing="3">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <Ellipse
-                                        Width="7"
-                                        Height="7"
-                                        VerticalAlignment="Center"
-                                        Fill="{ThemeResource SystemFillColorAttentionBrush}" />
-                                    <TextBlock
-                                        FontSize="13"
-                                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                        Text="当前会话"
-                                        TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
-                                <TextBlock
-                                    FontSize="11.5"
-                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                    TextTrimming="CharacterEllipsis"
-                                    Text="{Binding WorkingDirectory}" />
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
+                    <ListView
+                        x:Name="SessionList"
+                        Grid.Row="1"
+                        Margin="8,0,8,0"
+                        ItemTemplate="{StaticResource SessionItemTemplate}"
+                        SelectionChanged="OnSessionSelectionChanged"
+                        SelectionMode="Single">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="Margin" Value="0,1" />
+                                <Setter Property="MinHeight" Value="0" />
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                    </ListView>
 
                     <StackPanel Grid.Row="2" Margin="16,8,16,12" Spacing="2">
                         <TextBlock
@@ -292,7 +306,7 @@
                         <TextBlock
                             FontSize="11"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                            Text="M1 · Claude Code 单会话" />
+                            Text="M2 · 多会话 · 本地持久化" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -354,12 +368,25 @@
                             VerticalAlignment="Center"
                             Orientation="Horizontal"
                             Spacing="8">
+                            <ComboBox
+                                x:Name="ProviderPicker"
+                                MinWidth="118"
+                                DisplayMemberPath="DisplayName"
+                                FontSize="12"
+                                SelectionChanged="OnProviderSelectionChanged"
+                                ToolTipService.ToolTip="新建会话使用的后端" />
+                            <TextBlock
+                                x:Name="WorkingDirectoryText"
+                                MaxWidth="340"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource MetaTextStyle}"
+                                TextTrimming="CharacterEllipsis" />
                             <Button
                                 Padding="10,2"
                                 Click="OnPickFolderClick"
-                                Content="工作目录…"
+                                Content="新建到目录…"
                                 FontSize="12"
-                                ToolTipService.ToolTip="更换目录会重建后端会话（provider 是进程级属性）" />
+                                ToolTipService.ToolTip="在选定目录下新建会话（目录是会话属性，不可中途更换）" />
                         </StackPanel>
                     </Grid>
 
@@ -406,7 +433,7 @@
                                 HorizontalAlignment="Center"
                                 FontSize="12"
                                 Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                Text="在下方输入任务，工具调用会在这里实时出现，需要授权时就地确认。"
+                                Text="左侧新建会话，或在下方输入任务；工具调用会在这里实时出现，需要授权时就地确认。"
                                 TextAlignment="Center"
                                 TextWrapping="Wrap" />
                         </StackPanel>

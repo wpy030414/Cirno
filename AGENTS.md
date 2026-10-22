@@ -51,6 +51,7 @@ pnpm test:theme                     # 取色算法单测
 dotnet build apps/Cirno.slnx -p:Platform=x64   # 应用可编译
 ```
 
+- 会话 id 必须是标准 UUID（带连字符）：Claude 的 `--session-id` 会校验格式，无连字符会被后端直接拒启。
 - 端到端自检（真实后端，会消耗 token）：
   ```bash
   Cirno.exe --cwd <dir> --prompt "读 hello.txt 并把行序反转后写入 out.txt" \
@@ -75,7 +76,7 @@ dotnet build apps/Cirno.slnx -p:Platform=x64   # 应用可编译
 - `themes/<id>.theme/` — 主题数据：manifest + 源图（纯源文件，不含产物）
 - `apps/` — 解决方案文件
 - `src/Cirno.App/` — WinUI 3 可执行：窗口、视图、ViewModel、主题装配
-- `src/Cirno.Core/` — 会话编排与持久化（M2 起落地）
+- `src/Cirno.Core/` — 会话编排（`SessionOrchestrator`）与 SQLite 持久化（`SessionStore`）
 - `src/Cirno.Agents.Abstractions/` — 归一化事件模型与 `IAgentBackend` 契约（零 UI 依赖）
 - `src/Cirno.Agents.Claude/` — Claude Code stream-json 与 control 协议适配
 - `src/Cirno.Agents.Codex/` — Codex app-server 适配（M3 起落地）

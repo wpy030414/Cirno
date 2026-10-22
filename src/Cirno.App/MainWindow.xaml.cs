@@ -1,4 +1,5 @@
 using System.Collections.Specialized;
+using Cirno.Agents.Claude;
 using Cirno.App.Services;
 using Cirno.App.ViewModels;
 using Microsoft.UI;
@@ -18,9 +19,11 @@ namespace Cirno.App;
 public sealed partial class MainWindow : Window
 {
     private readonly ThemeService _themes = new();
-    private readonly SessionViewModel _vm;
+    private readonly MainViewModel _main;
+    private SessionViewModel? _active;
     private bool _isDark;
     private bool _ready;
+    private bool _suppressSelection;
 
     public MainWindow()
     {
@@ -45,17 +48,23 @@ public sealed partial class MainWindow : Window
 
         ThemePicker.ItemsSource = _themes.Themes;
 
-        var workingDirectory = ReadArgument("--cwd") ?? Environment.CurrentDirectory;
-        _vm = new SessionViewModel(
-            DispatcherQueue,
-            workingDirectory,
-            autoApprove: HasFlag("--auto-approve"),
-            tracePath: ReadArgument("--trace"));
-        _vm.ScrollRequested += (_, _) => ScrollToEnd();
-        _vm.Items.CollectionChanged += OnItemsChanged;
+        var databasePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Cirno",
+            "cirno.db");
 
-        RootGrid.DataContext = _vm;
-        Timeline.ItemsSource = _vm.Items;
+        _main = new MainViewModel(
+            databasePath,
+            [new ClaudeBackend()],
+            DispatcherQueue,
+            autoApprove: HasFlag("--auto-approve"),
+            tracePath: ReadArgument("--trace"),
+            preferredProviderId: ReadArgument("--provider"));
+
+        _main.ActiveSessionChanged += OnActiveSessionChanged;
+        SessionList.ItemsSource = _main.Sessions;
+        ProviderPicker.ItemsSource = _main.Backends;
+        ProviderPicker.SelectedItem = _main.Backends.FirstOrDefault(b => b.Id == _main.DefaultProviderId);
 
         var requestedId = ReadArgument("--theme");
         var initial = _themes.Themes.FirstOrDefault(
@@ -65,7 +74,9 @@ public sealed partial class MainWindow : Window
         ThemePicker.SelectedItem = initial;
         _ready = true;
         ApplyTheme(initial);
-        UpdateEmptyState();
+
+        _main.Restore();
+        OnActiveSessionChanged(null, EventArgs.Empty);
 
         RootGrid.Loaded += OnRootLoaded;
         Closed += OnWindowClosed;
@@ -75,30 +86,147 @@ public sealed partial class MainWindow : Window
     {
         RootGrid.Loaded -= OnRootLoaded;
         Composer.Focus(FocusState.Programmatic);
-        await _vm.StartAsync();
 
-        // 开发期自检：--prompt 可在无人值守时直接跑一轮真实会话
-        var prompt = ReadArgument("--prompt");
-        if (!string.IsNullOrWhiteSpace(prompt))
+        // 开发期自检：还原结果落成 JSON
+        if (ReadArgument("--restore-check") is { } reportPath)
         {
-            Composer.Text = prompt;
-            await SendAsync();
+            _main.WriteRestoreReport(reportPath);
+        }
 
-            if (int.TryParse(ReadArgument("--stop-after"), out var seconds) && seconds > 0)
+        var prompt = ReadArgument("--prompt");
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            return;
+        }
+
+        // 自检：--parallel N 同时向 N 个会话发同一问题，验证并发不串流
+        if (int.TryParse(ReadArgument("--parallel"), out var parallel) && parallel > 1)
+        {
+            var root = Path.Combine(Path.GetTempPath(), "cirno-parallel");
+            var sends = new List<Task>();
+            for (var i = 0; i < parallel; i++)
             {
-                await Task.Delay(TimeSpan.FromSeconds(seconds));
-                await _vm.InterruptAsync();
+                var directory = Path.Combine(root, $"s{i}");
+                Directory.CreateDirectory(directory);
+                var session = _main.CreateSession(directory);
+                sends.Add(session.SendAsync($"{prompt} (会话 {i})"));
             }
+
+            await Task.WhenAll(sends);
+            return;
+        }
+
+        // 自检：--new-session 强制新建，便于验证多会话并存与还原
+        if (_main.ActiveSession is null || HasFlag("--new-session"))
+        {
+            _main.CreateSession(ReadArgument("--cwd") ?? _main.ResolveWorkingDirectory());
+        }
+
+        Composer.Text = prompt;
+        await SendAsync();
+
+        if (int.TryParse(ReadArgument("--stop-after"), out var seconds) && seconds > 0)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(seconds));
+            await (_main.ActiveSession?.InterruptAsync() ?? Task.CompletedTask);
         }
     }
 
-    private static bool HasFlag(string name)
-        => Environment.GetCommandLineArgs()
-            .Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
-
     private async void OnWindowClosed(object sender, WindowEventArgs args)
     {
-        await _vm.DisposeAsync();
+        await _main.DisposeAsync();
+    }
+
+    // ---------- 会话切换 ----------
+
+    private void OnActiveSessionChanged(object? sender, EventArgs e)
+    {
+        if (_active is not null)
+        {
+            _active.Items.CollectionChanged -= OnItemsChanged;
+        }
+
+        _active = _main.ActiveSession;
+
+        if (_active is not null)
+        {
+            _active.Items.CollectionChanged += OnItemsChanged;
+        }
+
+        Timeline.ItemsSource = _active?.Items;
+        SessionHost.DataContext = _active;
+        WorkingDirectoryText.Text = _active?.WorkingDirectory ?? string.Empty;
+        Title = _active is null ? "Cirno" : $"Cirno — {_active.Title}";
+
+        SyncSelection();
+        UpdateEmptyState();
+        ScrollToEnd();
+    }
+
+    private void SyncSelection()
+    {
+        _suppressSelection = true;
+        SessionList.SelectedItem = _active;
+        _suppressSelection = false;
+    }
+
+    private void OnSessionSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_suppressSelection && SessionList.SelectedItem is SessionViewModel vm && !ReferenceEquals(vm, _active))
+        {
+            _main.ActiveSession = vm;
+        }
+    }
+
+    private void OnNewSessionClick(object sender, RoutedEventArgs e)
+        => _main.CreateSession(_main.ResolveWorkingDirectory());
+
+    private async void OnPickFolderClick(object sender, RoutedEventArgs e)
+    {
+        var picker = new FolderPicker();
+        picker.FileTypeFilter.Add("*");
+
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        var folder = await picker.PickSingleFolderAsync();
+        if (folder is null)
+        {
+            return;
+        }
+
+        _main.CreateSession(folder.Path);
+    }
+
+    private async void OnDeleteSessionClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not SessionViewModel vm)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = "删除会话",
+            Content = $"将删除「{vm.Title}」的本地记录与时间线；后端侧的历史文件不受影响。",
+            PrimaryButtonText = "删除",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            await _main.DeleteAsync(vm);
+        }
+    }
+
+    private void OnProviderSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_ready && ProviderPicker.SelectedItem is Cirno.Agents.Abstractions.IAgentBackend backend)
+        {
+            _main.DefaultProviderId = backend.Id;
+        }
     }
 
     // ---------- 发送与中断 ----------
@@ -127,7 +255,7 @@ public sealed partial class MainWindow : Window
 
     private async Task SendAsync()
     {
-        if (_vm.IsBusy)
+        if (_active is null || _active.IsBusy)
         {
             return;
         }
@@ -139,42 +267,31 @@ public sealed partial class MainWindow : Window
         }
 
         Composer.Text = string.Empty;
-        await _vm.SendAsync(text);
+        await _active.SendAsync(text);
     }
 
-    private async void OnStopClick(object sender, RoutedEventArgs e) => await _vm.InterruptAsync();
+    private async void OnStopClick(object sender, RoutedEventArgs e)
+    {
+        if (_active is not null)
+        {
+            await _active.InterruptAsync();
+        }
+    }
 
     private async void OnApproveClick(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: TimelineItem item })
+        if (_active is not null && sender is FrameworkElement { DataContext: TimelineItem item })
         {
-            await _vm.ApproveAsync(item, allow: true);
+            await _active.ApproveAsync(item, allow: true);
         }
     }
 
     private async void OnDenyClick(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: TimelineItem item })
+        if (_active is not null && sender is FrameworkElement { DataContext: TimelineItem item })
         {
-            await _vm.ApproveAsync(item, allow: false);
+            await _active.ApproveAsync(item, allow: false);
         }
-    }
-
-    private async void OnPickFolderClick(object sender, RoutedEventArgs e)
-    {
-        var picker = new FolderPicker();
-        picker.FileTypeFilter.Add("*");
-
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
-
-        var folder = await picker.PickSingleFolderAsync();
-        if (folder is null)
-        {
-            return;
-        }
-
-        await _vm.ChangeDirectoryAsync(folder.Path);
     }
 
     // ---------- 时间线滚动 ----------
@@ -182,7 +299,10 @@ public sealed partial class MainWindow : Window
     private void OnItemsChanged(object? sender, NotifyCollectionChangedEventArgs e) => UpdateEmptyState();
 
     private void UpdateEmptyState()
-        => EmptyState.Visibility = _vm.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    {
+        var empty = _active is null || _active.Items.Count == 0;
+        EmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+    }
 
     /// <summary>只在新内容到达时跟随滚动；用户回看历史时不抢滚动位置。</summary>
     private void ScrollToEnd()
@@ -251,6 +371,10 @@ public sealed partial class MainWindow : Window
 
         return null;
     }
+
+    private static bool HasFlag(string name)
+        => Environment.GetCommandLineArgs()
+            .Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
 
     private void OnModeToggleClick(object sender, RoutedEventArgs e)
     {
