@@ -55,6 +55,15 @@ public sealed class ClaudeEventParser
     /// <summary>后端会话 id（来自 system/init）。</summary>
     public string? BackendSessionId => _currentBackendSessionId;
 
+    /// <summary>
+    /// 转录模式：从本地历史文件导入时产出用户文本条目。
+    /// live 流默认关闭——CLI 会回显 user 行，而宿主在发送时已本地落过条目，开了会重复。
+    /// </summary>
+    public bool EmitUserMessages { get; set; }
+
+    /// <summary>转录中的标题行（ai-title / summary）发现时上报；多次触发以末值为准。</summary>
+    public event Action<string>? TitleDiscovered;
+
     /// <summary>收到后端对某次控制请求的应答（request_id → 原始响应）。</summary>
     public event Action<string, JsonElement>? ControlResponseReceived;
 
@@ -77,16 +86,24 @@ public sealed class ClaudeEventParser
         var root = doc.RootElement;
         var type = GetString(root, "type");
 
+        // 转录事实：sidechain 行属于子代理/内部链路，不进入主时间线。
+        if (root.TryGetProperty("isSidechain", out var sidechain) && sidechain.ValueKind == JsonValueKind.True)
+        {
+            return;
+        }
+
+        var lineTimestamp = ReadTimestamp(root);
+
         switch (type)
         {
             case "system":
-                HandleSystem(root);
+                HandleSystem(root, lineTimestamp);
                 break;
             case "assistant":
-                HandleAssistant(root);
+                HandleAssistant(root, lineTimestamp);
                 break;
             case "user":
-                HandleUser(root);
+                HandleUser(root, lineTimestamp);
                 break;
             case "stream_event":
                 HandleStreamEvent(root);
@@ -100,6 +117,29 @@ public sealed class ClaudeEventParser
             case "control_response":
                 HandleControlResponse(root);
                 break;
+            case "ai-title":
+            {
+                // AI 生成的会话标题，列表侧栏用它代替截断的首条消息
+                var title = GetString(root, "aiTitle");
+                if (!string.IsNullOrWhiteSpace(title))
+                {
+                    TitleDiscovered?.Invoke(title);
+                }
+
+                break;
+            }
+
+            case "summary":
+            {
+                // 压缩时写入的摘要行；没有 ai-title 时作为标题回退
+                var title = GetString(root, "summary");
+                if (!string.IsNullOrWhiteSpace(title))
+                {
+                    TitleDiscovered?.Invoke(title);
+                }
+
+                break;
+            }
         }
     }
 
@@ -121,7 +161,7 @@ public sealed class ClaudeEventParser
 
     // ---------- 分派 ----------
 
-    private void HandleSystem(JsonElement root)
+    private void HandleSystem(JsonElement root, DateTimeOffset? lineTimestamp)
     {
         switch (GetString(root, "subtype"))
         {
@@ -144,6 +184,7 @@ public sealed class ClaudeEventParser
                     Id = $"notice:compact:{Guid.NewGuid():n}",
                     Kind = AgentItemKind.Notice,
                     Text = "上下文已压缩。",
+                    Timestamp = lineTimestamp ?? DateTimeOffset.Now,
                 };
                 _sink.Raise(new ItemStartedEvent(notice));
                 _sink.Raise(new ItemCompletedEvent(notice));
@@ -152,7 +193,7 @@ public sealed class ClaudeEventParser
         }
     }
 
-    private void HandleAssistant(JsonElement root)
+    private void HandleAssistant(JsonElement root, DateTimeOffset? lineTimestamp)
     {
         if (!root.TryGetProperty("message", out var message))
         {
@@ -167,6 +208,7 @@ public sealed class ClaudeEventParser
             return;
         }
 
+        var timestamp = lineTimestamp ?? DateTimeOffset.Now;
         var index = 0;
         foreach (var block in content.EnumerateArray())
         {
@@ -178,6 +220,7 @@ public sealed class ClaudeEventParser
                         Id = $"blk:{messageId}:{index}",
                         Kind = AgentItemKind.AssistantMessage,
                         Text = GetString(block, "text") ?? string.Empty,
+                        Timestamp = timestamp,
                         Raw = block.Clone(),
                     });
                     break;
@@ -192,6 +235,7 @@ public sealed class ClaudeEventParser
                             Id = $"blk:{messageId}:{index}",
                             Kind = AgentItemKind.Reasoning,
                             Text = thinking,
+                            Timestamp = timestamp,
                             Raw = block.Clone(),
                         });
                     }
@@ -204,7 +248,7 @@ public sealed class ClaudeEventParser
                     var toolUseId = GetString(block, "id") ?? $"tool:{Guid.NewGuid():n}";
                     var name = GetString(block, "name") ?? "tool";
                     var input = block.TryGetProperty("input", out var i) ? i.Clone() : (JsonElement?)null;
-                    var item = BuildToolItem(toolUseId, name, input);
+                    var item = BuildToolItem(toolUseId, name, input) with { Timestamp = timestamp };
                     bool known;
                     lock (_gate)
                     {
@@ -225,11 +269,33 @@ public sealed class ClaudeEventParser
         }
     }
 
-    private void HandleUser(JsonElement root)
+    private void HandleUser(JsonElement root, DateTimeOffset? lineTimestamp)
     {
+        // 转录事实：isMeta 行是 CLI 写入的提醒/附件，不是用户说的话
+        if (root.TryGetProperty("isMeta", out var meta) && meta.ValueKind == JsonValueKind.True)
+        {
+            return;
+        }
+
         if (!root.TryGetProperty("message", out var message) ||
-            !message.TryGetProperty("content", out var content) ||
-            content.ValueKind != JsonValueKind.Array)
+            !message.TryGetProperty("content", out var content))
+        {
+            return;
+        }
+
+        // 转录模式：人类输入的文本 → UserMessage 条目（live 流关闭，见 EmitUserMessages）
+        if (EmitUserMessages && TryReadHumanPrompt(root, content, out var prompt))
+        {
+            CompleteOrRaise(new AgentItem
+            {
+                Id = GetString(root, "uuid") ?? $"user:{Guid.NewGuid():n}",
+                Kind = AgentItemKind.UserMessage,
+                Text = prompt,
+                Timestamp = lineTimestamp ?? DateTimeOffset.Now,
+            });
+        }
+
+        if (content.ValueKind != JsonValueKind.Array)
         {
             return;
         }
@@ -281,11 +347,56 @@ public sealed class ClaudeEventParser
                 Detail = detail,
                 IsError = isError,
                 IsStreaming = false,
-                Timestamp = DateTimeOffset.Now,
+                Timestamp = lineTimestamp ?? DateTimeOffset.Now,
             };
             Remember(completed);
             _sink.Raise(new ItemCompletedEvent(completed));
         }
+    }
+
+    /// <summary>
+    /// 判定一行 user 转录是否人类输入，并取出文本。
+    /// 转录事实：content 既可能是纯字符串，也可能是内容块数组；
+    /// 机器写入的行（命令回显、tool_result）要么带非 human 的 origin.kind，要么 content 是 tool_result 数组。
+    /// </summary>
+    private static bool TryReadHumanPrompt(JsonElement root, JsonElement content, out string prompt)
+    {
+        prompt = string.Empty;
+        var originKind = root.TryGetProperty("origin", out var origin) ? GetString(origin, "kind") : null;
+
+        if (content.ValueKind == JsonValueKind.String)
+        {
+            if (originKind is not null and not "human")
+            {
+                return false;
+            }
+
+            var text = content.GetString();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            prompt = text;
+            return true;
+        }
+
+        if (content.ValueKind == JsonValueKind.Array && originKind == "human")
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var block in content.EnumerateArray())
+            {
+                if (GetString(block, "type") == "text" && GetString(block, "text") is { } text)
+                {
+                    sb.Append(text).Append('\n');
+                }
+            }
+
+            prompt = sb.ToString().Trim('\n', '\r', ' ');
+            return prompt.Length > 0;
+        }
+
+        return false;
     }
 
     private void HandleStreamEvent(JsonElement root)
@@ -481,6 +592,21 @@ public sealed class ClaudeEventParser
     }
 
     // ---------- 辅助 ----------
+
+    /// <summary>读行根级 timestamp（ISO-8601，转录与 live 流同款字段）；缺失或非法返回 null。</summary>
+    internal static DateTimeOffset? ReadTimestamp(JsonElement element)
+    {
+        var text = GetString(element, "timestamp");
+        if (string.IsNullOrEmpty(text))
+        {
+            return null;
+        }
+
+        return DateTimeOffset.TryParse(text, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed)
+            ? parsed
+            : null;
+    }
 
     private void CompleteOrRaise(AgentItem item)
     {

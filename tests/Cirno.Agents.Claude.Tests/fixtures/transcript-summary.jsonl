@@ -1,0 +1,2 @@
+{"type":"summary","summary":"调研认证方案","leafUuid":"u-0001"}
+{"parentUuid":null,"isSidechain":false,"origin":{"kind":"human"},"type":"user","message":{"role":"user","content":"帮我看下 OAuth 和 OIDC 的取舍"},"uuid":"u-0001","timestamp":"2026-10-23T11:00:00.000Z","cwd":"C:\\work\\auth","sessionId":"33333333-4444-5555-6666-777777777777","version":"2.1.301"}

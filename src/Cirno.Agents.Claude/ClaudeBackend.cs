@@ -60,5 +60,8 @@ public sealed class ClaudeBackend : IAgentBackend
     /// <summary>最近一次探测到的后端版本，写入会话元数据。</summary>
     public string? Version { get; private set; }
 
+    /// <summary>本地历史目录（~/.claude/projects）：会话列表的权威源。</summary>
+    public IAgentHistorySource History { get; } = new ClaudeHistorySource();
+
     public IAgentSession CreateSession(AgentSessionOptions options) => new ClaudeSession(options);
 }

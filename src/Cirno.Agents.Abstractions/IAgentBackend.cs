@@ -33,6 +33,12 @@ public interface IAgentBackend
 
     string DisplayName { get; }
 
+    /// <summary>
+    /// 后端的本地历史目录（若存在）。会话列表以它为权威源；
+    /// 没有本地历史的后端保持默认的 null。
+    /// </summary>
+    IAgentHistorySource? History => null;
+
     /// <summary>探测后端可用性；不可用时返回可读原因。</summary>
     Task<string?> ProbeAsync(CancellationToken cancellationToken = default);
 

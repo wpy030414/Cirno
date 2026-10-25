@@ -1,0 +1,12 @@
+{"type":"mode","mode":"normal","sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
+{"type":"permission-mode","permissionMode":"bypassPermissions","sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
+{"type":"atis-latch","atis":"","sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
+{"type":"ai-title","aiTitle":"初始标题","sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
+{"type":"file-history-snapshot","messageId":"u-0001","snapshot":{"messageId":"u-0001","trackedFileBackups":{},"timestamp":"2026-10-20T08:00:00.000Z"},"isSnapshotUpdate":false}
+{"parentUuid":null,"isSidechain":false,"origin":{"kind":"human"},"type":"user","message":{"role":"user","content":"登录接口偶尔超时，帮我查一下。"},"uuid":"u-0001","timestamp":"2026-10-20T08:00:01.000Z","cwd":"C:\\work\\demo","sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","version":"2.1.301","gitBranch":"main"}
+{"parentUuid":"u-0001","isSidechain":false,"origin":{"kind":"assistant"},"type":"assistant","message":{"id":"msg_01","model":"claude-sonnet-4-5","content":[{"type":"thinking","thinking":"先看超时配置。"},{"type":"text","text":"我先检查超时配置。"}]},"uuid":"a-0001","timestamp":"2026-10-20T08:00:02.000Z","cwd":"C:\\work\\demo","sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
+{"parentUuid":"a-0001","isSidechain":false,"origin":{"kind":"assistant"},"type":"assistant","message":{"id":"msg_01","content":[{"type":"tool_use","id":"toolu_01","name":"Read","input":{"file_path":"C:\\work\\demo\\config.js"}}]},"uuid":"a-0002","timestamp":"2026-10-20T08:00:03.000Z","cwd":"C:\\work\\demo","sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
+{"parentUuid":"a-0002","isSidechain":false,"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"timeout: 3000"}]},"uuid":"u-0002","timestamp":"2026-10-20T08:00:04.000Z","cwd":"C:\\work\\demo","sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
+{"parentUuid":"u-0002","isSidechain":false,"origin":{"kind":"assistant"},"type":"assistant","message":{"id":"msg_02","content":[{"type":"text","text":"超时是 3 秒，建议提到 10 秒。"}]},"uuid":"a-0003","timestamp":"2026-10-20T08:00:05.000Z","cwd":"C:\\work\\demo","sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
+{"type":"ai-title","aiTitle":"修复登录超时","sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
+{"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn","duration_ms":4000,"usage":{"input_tokens":500,"output_tokens":80},"total_cost_usd":0.0031,"timestamp":"2026-10-20T08:00:05.500Z","cwd":"C:\\work\\demo","sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
