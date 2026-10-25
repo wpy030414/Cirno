@@ -358,6 +358,8 @@ public sealed class ClaudeEventParser
     /// 判定一行 user 转录是否人类输入，并取出文本。
     /// 转录事实：content 既可能是纯字符串，也可能是内容块数组；
     /// 机器写入的行（命令回显、tool_result）要么带非 human 的 origin.kind，要么 content 是 tool_result 数组。
+    /// 但 /clear 等斜杠命令回显既没有 isMeta 也没有 origin，自定义命令的 origin 反而是 human——
+    /// 因此最后还要按内容剥离机器块（<see cref="ClaudeUserText"/>）。
     /// </summary>
     private static bool TryReadHumanPrompt(JsonElement root, JsonElement content, out string prompt)
     {
@@ -371,14 +373,7 @@ public sealed class ClaudeEventParser
                 return false;
             }
 
-            var text = content.GetString();
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                return false;
-            }
-
-            prompt = text;
-            return true;
+            return TryCleanHumanText(content.GetString(), out prompt);
         }
 
         if (content.ValueKind == JsonValueKind.Array && originKind == "human")
@@ -392,11 +387,16 @@ public sealed class ClaudeEventParser
                 }
             }
 
-            prompt = sb.ToString().Trim('\n', '\r', ' ');
-            return prompt.Length > 0;
+            return TryCleanHumanText(sb.ToString(), out prompt);
         }
 
         return false;
+    }
+
+    private static bool TryCleanHumanText(string? text, out string prompt)
+    {
+        prompt = ClaudeUserText.Sanitize(text) ?? string.Empty;
+        return prompt.Length > 0;
     }
 
     private void HandleStreamEvent(JsonElement root)

@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.ComponentModel;
+using System.Diagnostics;
 using Cirno.Agents.Claude;
 using Cirno.App.Services;
 using Cirno.App.ViewModels;
@@ -92,12 +94,15 @@ public sealed partial class MainWindow : Window
         {
             _shell.Update(new ShellStatus(
                 summary.Total, summary.Running, summary.AwaitingApproval, summary.Failed));
-            ShellStatusText.Text = FormatSummary(summary);
         };
 
         // 事件在 _main 就绪之后再挂，避免托盘先于视图模型可用（也消掉可空警告）
         _shell.ShowRequested += RestoreWindow;
-        _shell.NewSessionRequested += () => _main.CreateSession(_main.ResolveWorkingDirectory());
+        _shell.NewSessionRequested += () =>
+        {
+            RestoreWindow();
+            BeginDraft();
+        };
         _shell.ExitRequested += Close;
 
         _main.ActiveSessionChanged += OnActiveSessionChanged;
@@ -107,25 +112,8 @@ public sealed partial class MainWindow : Window
             Sessions.Add(session);
         }
 
-        var models = new List<ModelOption>
-        {
-            new("默认模型", null),
-            new("sonnet", "sonnet"),
-            new("opus", "opus"),
-            new("haiku", "haiku"),
-        };
-
-        if (ReadArgument("--model") is { } modelArg &&
-            models.All(m => !string.Equals(m.Value, modelArg, StringComparison.OrdinalIgnoreCase)))
-        {
-            models.Add(new ModelOption(modelArg, modelArg));
-        }
-
-        ModelPicker.ItemsSource = models;
-        var initialModel = ReadArgument("--model");
-        ModelPicker.SelectedItem = models.FirstOrDefault(m =>
-            string.Equals(m.Value, initialModel, StringComparison.OrdinalIgnoreCase)) ?? models[0];
-        _main.NewSessionModel = (ModelPicker.SelectedItem as ModelOption)?.Value;
+        // 界面不再提供模型选择器；--model 仍是新建会话指定模型的唯一入口（开发/自检用）
+        _main.NewSessionModel = ReadArgument("--model");
 
         RegisterAccelerators();
 
@@ -177,6 +165,12 @@ public sealed partial class MainWindow : Window
         var prompt = ReadArgument("--prompt");
         if (string.IsNullOrWhiteSpace(prompt))
         {
+            // 冷启动时任务栏跳转列表的「新建会话」：进入草稿，不提前占侧栏
+            if (HasFlag("--new-session"))
+            {
+                BeginDraft(ReadArgument("--cwd"));
+            }
+
             return;
         }
 
@@ -197,10 +191,10 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // 自检：--new-session 强制新建，便于验证多会话并存与还原
+        // 自检：--new-session 强制新建；发送时才真正落库（与界面草稿语义一致）
         if (_main.ActiveSession is null || HasFlag("--new-session"))
         {
-            _main.CreateSession(ReadArgument("--cwd") ?? _main.ResolveWorkingDirectory());
+            BeginDraft(ReadArgument("--cwd"));
         }
 
         Composer.Text = prompt;
@@ -269,8 +263,12 @@ public sealed partial class MainWindow : Window
 
         if (request.NewSession)
         {
-            var session = _main.CreateSession(request.WorkingDirectory ?? _main.ResolveWorkingDirectory());
-            _main.ActiveSession = session;
+            // 新建意图 = 进入草稿；带 prompt 时由 SendAsync 在发送瞬间落库
+            BeginDraft(request.WorkingDirectory);
+        }
+        else if (_main.ActiveSession is null && request.WorkingDirectory is not null)
+        {
+            BeginDraft(request.WorkingDirectory);
         }
 
         if (!string.IsNullOrWhiteSpace(request.Prompt))
@@ -298,12 +296,12 @@ public sealed partial class MainWindow : Window
 
         Timeline.ItemsSource = _active?.Items;
         SessionHost.DataContext = _active;
-        WorkingDirectoryText.Text = _active?.WorkingDirectory ?? string.Empty;
         Title = _active is null ? "Cirno" : $"Cirno — {_active.Title}";
 
         SyncSelection();
+        UpdateDraftUi();
         UpdateEmptyState();
-        ScrollToEnd();
+        ScrollToEnd(force: true);
     }
 
     private void SyncSelection()
@@ -321,21 +319,43 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OnNewSessionClick(object sender, RoutedEventArgs e)
-        => _main.CreateSession(_main.ResolveWorkingDirectory());
+    private void OnNewSessionClick(object sender, RoutedEventArgs e) => BeginDraft();
 
-    private void OnModelSelectionChanged(object sender, SelectionChangedEventArgs e)
+    /// <summary>
+    /// 进入草稿态并聚焦输入框：不创建会话、不写库，首条消息发出时才落库入列。
+    /// </summary>
+    private void BeginDraft(string? workingDirectory = null)
     {
-        if (_ready && ModelPicker.SelectedItem is ModelOption option)
+        _main.BeginDraft(workingDirectory);
+        Composer.Focus(FocusState.Programmatic);
+    }
+
+    /// <summary>草稿态下的工作目录显示与显隐；会话开始后控件永远不再出现。</summary>
+    private void UpdateDraftUi()
+    {
+        var draft = _active is null;
+        DraftFolderButton.Visibility = draft ? Visibility.Visible : Visibility.Collapsed;
+
+        var directory = _active?.WorkingDirectory ?? _main.DraftWorkingDirectory;
+        if (draft)
         {
-            _main.NewSessionModel = option.Value;
+            DraftFolderText.Text = string.IsNullOrWhiteSpace(directory)
+                ? "选择文件夹"
+                : directory;
+            ToolTipService.SetToolTip(DraftFolderButton, directory);
         }
+
+        ToolTipService.SetToolTip(
+            OpenFolderButton,
+            string.IsNullOrWhiteSpace(directory)
+                ? "在资源管理器中打开工作目录"
+                : $"在资源管理器中打开：{directory}");
     }
 
     /// <summary>键盘全流程：新建、切会话、中断、聚焦输入，都不需要鼠标。</summary>
     private void RegisterAccelerators()
     {
-        AddAccelerator(VirtualKey.N, VirtualKeyModifiers.Control, () => _main.CreateSession(_main.ResolveWorkingDirectory()));
+        AddAccelerator(VirtualKey.N, VirtualKeyModifiers.Control, () => BeginDraft());
         AddAccelerator(VirtualKey.K, VirtualKeyModifiers.Control, () => Composer.Focus(FocusState.Programmatic));
         AddAccelerator(VirtualKey.Escape, VirtualKeyModifiers.None, () =>
         {
@@ -374,7 +394,26 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void OnPickFolderClick(object sender, RoutedEventArgs e)
+    /// <summary>草稿态选择工作目录：只改草稿参数，不创建会话。</summary>
+    private async void OnPickDraftFolderClick(object sender, RoutedEventArgs e)
+    {
+        if (_active is not null)
+        {
+            return;
+        }
+
+        var path = await PickFolderAsync();
+        if (path is null)
+        {
+            return;
+        }
+
+        _main.SetDraftWorkingDirectory(path);
+        UpdateDraftUi();
+        Composer.Focus(FocusState.Programmatic);
+    }
+
+    private async Task<string?> PickFolderAsync()
     {
         var picker = new FolderPicker();
         picker.FileTypeFilter.Add("*");
@@ -383,12 +422,51 @@ public sealed partial class MainWindow : Window
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 
         var folder = await picker.PickSingleFolderAsync();
-        if (folder is null)
+        return folder?.Path;
+    }
+
+    /// <summary>右上角文件夹按钮：在资源管理器里打开当前会话（或草稿）的工作目录。</summary>
+    private void OnOpenFolderClick(object sender, RoutedEventArgs e)
+    {
+        var path = _active?.WorkingDirectory ?? _main.DraftWorkingDirectory;
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+        {
+            _ = ShowErrorAsync("无法打开工作目录", "目录不存在或不可访问，请重新选择文件夹。");
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo("explorer.exe")
+            {
+                UseShellExecute = true,
+                ArgumentList = { path },
+            });
+        }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+        {
+            _ = ShowErrorAsync("无法打开工作目录", ex.Message);
+        }
+    }
+
+    /// <summary>窗口尚未 Loaded（激活早期）时 XamlRoot 可能为空，此时没有可呈现错误的位置，直接放弃。</summary>
+    private async Task ShowErrorAsync(string title, string message)
+    {
+        if (RootGrid.XamlRoot is null)
         {
             return;
         }
 
-        _main.CreateSession(folder.Path);
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = title,
+            Content = message,
+            CloseButtonText = "知道了",
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        await dialog.ShowAsync();
     }
 
     private async void OnDeleteSessionClick(object sender, RoutedEventArgs e)
@@ -458,7 +536,7 @@ public sealed partial class MainWindow : Window
 
     private async Task SendAsync()
     {
-        if (_active is null || _active.IsBusy)
+        if (_active is { IsBusy: true })
         {
             return;
         }
@@ -469,8 +547,31 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        // 草稿态：首条消息才是会话的诞生时刻——此刻落库、入列，然后发送
+        var target = _active;
+        if (target is null)
+        {
+            var directory = _main.DraftWorkingDirectory;
+            if (!Directory.Exists(directory))
+            {
+                await ShowErrorAsync("无法新建会话", "工作目录不存在，请重新选择文件夹。");
+                return;
+            }
+
+            try
+            {
+                target = _main.CreateSession(directory);
+            }
+            catch (Exception ex)
+            {
+                // 落库失败：保留输入与草稿状态，用户可以重试
+                await ShowErrorAsync("无法新建会话", ex.Message);
+                return;
+            }
+        }
+
         Composer.Text = string.Empty;
-        await _active.SendAsync(text);
+        await target.SendAsync(text);
     }
 
     private async void OnStopClick(object sender, RoutedEventArgs e)
@@ -499,7 +600,17 @@ public sealed partial class MainWindow : Window
 
     // ---------- 时间线滚动 ----------
 
-    private void OnItemsChanged(object? sender, NotifyCollectionChangedEventArgs e) => UpdateEmptyState();
+    private void OnItemsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        UpdateEmptyState();
+
+        // 历史批量导入是一次 Reset（BulkObservableCollection.AddRange）：
+        // 条目就位后强制落到底部，否则切进会话会停在最顶部。
+        if (e.Action == NotifyCollectionChangedAction.Reset)
+        {
+            ScrollToEnd(force: true);
+        }
+    }
 
     private void UpdateEmptyState()
     {
@@ -507,8 +618,11 @@ public sealed partial class MainWindow : Window
         EmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    /// <summary>只在新内容到达时跟随滚动；用户回看历史时不抢滚动位置。</summary>
-    private void ScrollToEnd()
+    /// <summary>
+    /// 跟随滚动：只在新内容到达时贴底；用户回看历史时不抢滚动位置。
+    /// force = 进入会话/历史导入时直接落到底部。
+    /// </summary>
+    private void ScrollToEnd(bool force = false)
     {
         if (Timeline.Items.Count == 0)
         {
@@ -516,13 +630,30 @@ public sealed partial class MainWindow : Window
         }
 
         var scrollViewer = FindScrollViewer(Timeline);
-        if (scrollViewer is not null &&
+        if (scrollViewer is null)
+        {
+            return;
+        }
+
+        if (!force &&
             scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset > 240)
         {
             return;
         }
 
         Timeline.ScrollIntoView(Timeline.Items[^1]);
+
+        if (!force)
+        {
+            return;
+        }
+
+        // Reset 之后布局还没完成，ScrollableHeight 仍是旧值；等一帧再顶到底
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            var viewer = FindScrollViewer(Timeline);
+            viewer?.ChangeView(null, viewer.ScrollableHeight, null, disableAnimation: true);
+        });
     }
 
     private static ScrollViewer? FindScrollViewer(DependencyObject root)
@@ -630,7 +761,17 @@ public sealed partial class MainWindow : Window
         UpdateArt();
     }
 
-    private void OnContentSizeChanged(object sender, SizeChangedEventArgs e) => ResizeCharacters();
+    /// <summary>
+    /// 内容区最宽 CirnoContentMaxWidth：窗口更宽时居中留白，不把正文拉到难以阅读的长度。
+    /// </summary>
+    private void OnContentSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        SessionHost.Width = double.IsFinite(SessionHost.MaxWidth)
+            ? Math.Min(e.NewSize.Width, SessionHost.MaxWidth)
+            : e.NewSize.Width;
+
+        ResizeCharacters();
+    }
 
     private void OnSessionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
@@ -664,27 +805,6 @@ public sealed partial class MainWindow : Window
 
                 break;
         }
-    }
-
-    private static string FormatSummary(SessionSummary summary)
-    {
-        var parts = new List<string> { $"{summary.Total} 个会话" };
-        if (summary.Running > 0)
-        {
-            parts.Add($"运行中 {summary.Running}");
-        }
-
-        if (summary.AwaitingApproval > 0)
-        {
-            parts.Add($"待审批 {summary.AwaitingApproval}");
-        }
-
-        if (summary.Failed > 0)
-        {
-            parts.Add($"失败 {summary.Failed}");
-        }
-
-        return string.Join(" · ", parts);
     }
 
     /// <summary>

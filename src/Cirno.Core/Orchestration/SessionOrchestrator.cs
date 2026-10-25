@@ -78,7 +78,7 @@ public sealed class SessionOrchestrator : IAsyncDisposable
                         ProviderId = source.ProviderId,
                         Model = record?.Model,
                         WorkingDirectory = summary.WorkingDirectory,
-                        Title = summary.Title ?? record?.Title,
+                        Title = summary.Title ?? source.NormalizeStoredTitle(record?.Title),
                         BackendSessionId = summary.SessionId,
                         CreatedAt = summary.FirstTimestamp ?? record?.CreatedAt ?? summary.LastActiveAt,
                         UpdatedAt = Max(summary.LastActiveAt, record?.UpdatedAt ?? DateTimeOffset.MinValue),
@@ -89,10 +89,19 @@ public sealed class SessionOrchestrator : IAsyncDisposable
             // pending 会话：新建未发送、或启动失败但已有本地条目——历史目录里还没有它们的文件
             foreach (var record in _store.ListSessions())
             {
-                if (string.IsNullOrEmpty(record.BackendSessionId))
+                if (!string.IsNullOrEmpty(record.BackendSessionId))
                 {
-                    merged.TryAdd(record.Id, record);
+                    continue;
                 }
+
+                // 草稿语义（ADR-133）：零条目的 pending 只是空壳（旧版本点「+」的残留），不列出。
+                // 用户还没发出任何消息的会话不该占用侧栏。
+                if (_store.CountItems(record.Id) == 0)
+                {
+                    continue;
+                }
+
+                merged.TryAdd(record.Id, record);
             }
 
             return (IReadOnlyList<SessionRecord>)[.. merged.Values.OrderByDescending(r => r.UpdatedAt)];
@@ -135,7 +144,10 @@ public sealed class SessionOrchestrator : IAsyncDisposable
                         ProviderId = source.ProviderId,
                         Model = record?.Model,
                         WorkingDirectory = summary.WorkingDirectory,
-                        Title = summary.Title ?? record?.Title,
+                        // 全量解析可能补到 64KB 窗口外的标题；旧库值再兜一层清洗
+                        Title = transcript.Summary.Title
+                                ?? summary.Title
+                                ?? source.NormalizeStoredTitle(record?.Title),
                         BackendSessionId = summary.SessionId,
                         CreatedAt = summary.FirstTimestamp ?? record?.CreatedAt ?? summary.LastActiveAt,
                         UpdatedAt = summary.LastActiveAt,
@@ -153,6 +165,9 @@ public sealed class SessionOrchestrator : IAsyncDisposable
                             runtime.Record = imported;
                         }
                     }
+
+                    // 导入顺带修正了标题/时间戳：让侧栏立刻刷新，不必等重启
+                    SessionChanged?.Invoke(sessionId);
                 }
                 // transcript 为 null：文件在列表面板与点开之间被外部删了，保持空时间线
             }

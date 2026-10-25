@@ -23,6 +23,12 @@ public interface IAgentHistorySource
 
     /// <summary>把会话的转录文件移出历史目录（移入回收站）。删除会话时由编排层调用。</summary>
     HistoryDeleteResult TryDeleteTranscript(string sessionId);
+
+    /// <summary>
+    /// 清洗旧版本写入本地库的标题（例如历史导入曾把斜杠命令回显当成了标题）。
+    /// 默认原样返回；实现可按自己的转录格式判断，但不得改变正常标题。
+    /// </summary>
+    string? NormalizeStoredTitle(string? title) => title;
 }
 
 /// <summary>删除转录的结果三态。</summary>

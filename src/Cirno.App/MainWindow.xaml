@@ -248,7 +248,6 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
                         <TextBlock
@@ -264,15 +263,6 @@
                             Style="{StaticResource CirnoSubtleIconButtonStyle}"
                             ToolTipService.ToolTip="新建会话 (Ctrl+N)">
                             <FontIcon FontSize="16" Glyph="&#xE710;" />
-                        </Button>
-
-                        <Button
-                            Grid.Column="2"
-                            AutomationProperties.Name="在目录中新建会话"
-                            Click="OnPickFolderClick"
-                            Style="{StaticResource CirnoSubtleIconButtonStyle}"
-                            ToolTipService.ToolTip="在选定目录中新建会话">
-                            <FontIcon FontSize="16" Glyph="&#xE8B7;" />
                         </Button>
                     </Grid>
                 </NavigationView.PaneHeader>
@@ -415,15 +405,21 @@
                             Stretch="Uniform" />
                     </Grid>
 
-                    <Grid x:Name="SessionHost">
+                    <!--
+                      内容区最宽 960：窗口再宽也不把一行文字拉到难以阅读的长度；
+                      宽度由 code-behind 在 SizeChanged 里夹到 MaxWidth，居中排布。
+                    -->
+                    <Grid
+                        x:Name="SessionHost"
+                        MaxWidth="{StaticResource CirnoContentMaxWidth}"
+                        HorizontalAlignment="Center">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <!-- 会话头：标题 + 状态/模型/用量 + 新建会话的默认模型 -->
+                        <!-- 会话头：只留标题；右侧是在资源管理器中打开工作目录 -->
                         <Grid
                             Grid.Row="0"
                             Padding="24,12,24,8"
@@ -433,34 +429,22 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
-                            <StackPanel Spacing="2">
-                                <TextBlock
-                                    Style="{StaticResource CirnoPageTitleStyle}"
-                                    Text="{Binding Title}"
-                                    TextTrimming="CharacterEllipsis" />
-                                <TextBlock
-                                    Style="{StaticResource CirnoCaptionSecondaryStyle}"
-                                    Text="{Binding HeaderLine}"
-                                    TextTrimming="CharacterEllipsis" />
-                                <TextBlock
-                                    x:Name="WorkingDirectoryText"
-                                    Style="{StaticResource CirnoCaptionTertiaryStyle}"
-                                    TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Style="{StaticResource CirnoPageTitleStyle}"
+                                Text="{Binding Title, FallbackValue=新会话}"
+                                TextTrimming="CharacterEllipsis" />
 
-                            <StackPanel
+                            <Button
+                                x:Name="OpenFolderButton"
                                 Grid.Column="1"
-                                VerticalAlignment="Top"
-                                Orientation="Horizontal"
-                                Spacing="6">
-                                <ComboBox
-                                    x:Name="ModelPicker"
-                                    MinWidth="128"
-                                    AutomationProperties.Name="模型"
-                                    FontSize="12"
-                                    SelectionChanged="OnModelSelectionChanged"
-                                    ToolTipService.ToolTip="新建会话使用的模型（模型是进程级属性，已有会话不变）" />
-                            </StackPanel>
+                                VerticalAlignment="Center"
+                                AutomationProperties.Name="在资源管理器中打开工作目录"
+                                Click="OnOpenFolderClick"
+                                Style="{StaticResource CirnoSubtleIconButtonStyle}"
+                                ToolTipService.ToolTip="在资源管理器中打开工作目录">
+                                <FontIcon FontSize="16" Glyph="&#xE8B7;" />
+                            </Button>
                         </Grid>
 
                         <!-- 时间线 -->
@@ -493,15 +477,9 @@
                                     TextAlignment="Center" />
                                 <TextBlock
                                     Style="{StaticResource CirnoSecondaryTextStyle}"
-                                    Text="左侧新建会话，或在下方描述要完成的任务。工具调用与文件变更会实时出现在这里，需要授权时就地确认。"
+                                    Text="在下方选择工作文件夹并描述任务。工具调用与文件变更会实时出现在这里，需要授权时就地确认。"
                                     TextAlignment="Center"
                                     TextWrapping="Wrap" />
-                                <Button
-                                    Margin="0,8,0,0"
-                                    HorizontalAlignment="Center"
-                                    Click="OnNewSessionClick"
-                                    Content="新建会话"
-                                    Style="{StaticResource AccentButtonStyle}" />
                             </StackPanel>
                         </Grid>
 
@@ -529,7 +507,23 @@
                                         BorderThickness="0"
                                         KeyDown="OnComposerKeyDown"
                                         PlaceholderText="描述要完成的任务…"
-                                        TextWrapping="Wrap" />
+                                        TextWrapping="Wrap">
+                                        <!--
+                                            Composer 的输入框嵌在卡片里，焦点态不再叠一层白底和蓝色下划线：
+                                            覆盖 TextBox 模板使用的主题资源，保持与卡片同面。
+                                        -->
+                                        <TextBox.Resources>
+                                            <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                                            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                                            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                                            <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                                            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                                            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                                            <SolidColorBrush x:Key="TextControlElevationBorderFocusedBrush" Color="Transparent" />
+                                            <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
+                                            <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+                                        </TextBox.Resources>
+                                    </TextBox>
 
                                     <Grid Grid.Row="1" ColumnSpacing="8">
                                         <Grid.ColumnDefinitions>
@@ -538,19 +532,34 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
 
-                                        <TextBlock
+                                        <Button
+                                            x:Name="DraftFolderButton"
                                             VerticalAlignment="Center"
-                                            Style="{StaticResource CirnoCaptionTertiaryStyle}"
-                                            Text="Enter 发送 · Shift+Enter 换行 · Ctrl+K 聚焦" />
+                                            HorizontalAlignment="Left"
+                                            AutomationProperties.Name="选择工作文件夹"
+                                            Click="OnPickDraftFolderClick"
+                                            Style="{StaticResource CirnoSubtleIconButtonStyle}"
+                                            ToolTipService.ToolTip="选择会话的工作文件夹（会话开始后不可更改）"
+                                            Visibility="Collapsed">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <FontIcon FontSize="14" Glyph="&#xE8B7;" />
+                                                <TextBlock
+                                                    x:Name="DraftFolderText"
+                                                    MaxWidth="420"
+                                                    Style="{StaticResource CirnoCaptionSecondaryStyle}"
+                                                    Text="选择文件夹"
+                                                    TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </Button>
 
                                         <Button
                                             x:Name="SendButton"
                                             Grid.Column="1"
                                             MinWidth="72"
                                             Click="OnSendClick"
-                                            IsEnabled="{Binding CanSend}"
+                                            IsEnabled="{Binding CanSend, FallbackValue=True}"
                                             Style="{StaticResource AccentButtonStyle}"
-                                            Visibility="{Binding SendVisibility}">
+                                            Visibility="{Binding SendVisibility, FallbackValue=Visible}">
                                             <StackPanel Orientation="Horizontal" Spacing="6">
                                                 <FontIcon FontSize="12" Glyph="&#xE725;" />
                                                 <TextBlock FontSize="12" Text="发送" />
@@ -562,7 +571,7 @@
                                             Grid.Column="2"
                                             MinWidth="72"
                                             Click="OnStopClick"
-                                            Visibility="{Binding StopVisibility}">
+                                            Visibility="{Binding StopVisibility, FallbackValue=Collapsed}">
                                             <StackPanel Orientation="Horizontal" Spacing="6">
                                                 <FontIcon FontSize="12" Glyph="&#xE71A;" />
                                                 <TextBlock FontSize="12" Text="停止" />
@@ -572,19 +581,6 @@
                                 </Grid>
                             </Border>
                         </Grid>
-
-                        <!-- 全局状态条：会话聚合状态，不抢占内容区 -->
-                        <Border
-                            Grid.Row="3"
-                            Padding="24,6"
-                            BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
-                            BorderThickness="0,1,0,0">
-                            <TextBlock
-                                x:Name="ShellStatusText"
-                                AutomationProperties.LiveSetting="Polite"
-                                Style="{StaticResource CirnoCaptionSecondaryStyle}"
-                                Text="就绪" />
-                        </Border>
                     </Grid>
                 </Grid>
             </NavigationView>

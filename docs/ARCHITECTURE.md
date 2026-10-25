@@ -39,8 +39,8 @@
 |---|---|
 | `Cirno.App` | WinUI 3 可执行；窗口、视图、ViewModel、主题装配；不直接碰子进程 |
 | `Cirno.Core` | 会话生命周期与并发编排、审批路由、SQLite 持久化、provider 与凭据登记 |
-| `Cirno.Agents.Abstractions` | 后端无关的会话/轮次/条目/审批模型与 `IAgentBackend` 契约；零第三方依赖 |
-| `Cirno.Agents.Claude` | Claude Code 的 stream-json 与 control 协议适配 |
+| `Cirno.Agents.Abstractions` | 后端无关的会话/轮次/条目/审批模型、`IAgentBackend` 契约与 `IAgentHistorySource` 历史源契约；零第三方依赖 |
+| `Cirno.Agents.Claude` | Claude Code 的 stream-json 与 control 协议适配，及本地历史目录（`~/.claude/projects`）读取 |
 | `Cirno.Agents.Codex` | Codex app-server 的 JSON-RPC 适配 |
 | `Cirno.Shell.Windows` | 任务栏/托盘/跳转列表、子进程 Job Object、窗口与材质辅助；不引用 Core |
 | `Cirno.Markdown` | Markdown AST → XAML Inlines/Blocks，含代码块与表格 |
@@ -70,6 +70,9 @@ themes/<id>.theme/manifest.json（roles + colorSource + displayName）
 **运行期（会话）**
 
 ```
+启动 → IAgentHistorySource.ListSessions()（~/.claude/projects 元数据扫描，每文件 ≤64KB）
+  → GetSessionsAsync 合并本地库运行期字段 → 侧栏会话列表
+点开会话 → LoadItemsAsync：库无条目或文件更新 → ReadTranscript 导入 SQLite → 时间线渲染
 用户输入 → Composer → Orchestrator → IAgentBackend.SendAsync
   → 子进程 stdout（JSONL / JSON-RPC）
   → 适配器解析为归一化事件
@@ -102,6 +105,7 @@ themes/<id>.theme/manifest.json（roles + colorSource + displayName）
 ### 会话与并发
 
 - 状态机：`Idle → Running → (AwaitingApproval ⇄ Running) → Idle | Failed | Interrupted`。
+- 新建会话以草稿态存在：不落库、不进侧栏；首条非空消息发出时才创建记录（ADR-133）。
 - 同一 provider 下 Codex 会话共享一个 app-server；Claude 会话各自一进程（进程即会话）。
 - 默认最多 4 个会话同时运行，其余排队并显示「等待中」。
 - 关闭窗口不杀进程：后台继续跑；应用退出时由 Job Object 兜底清理子进程树。
@@ -130,7 +134,8 @@ themes/<id>.theme/manifest.json（roles + colorSource + displayName）
 
 - 视觉令牌：`Styles/Spacing|Typography|Controls|Content.xaml` 定义 4px 间距网格、官方字阶、
   卡片/图标按钮/对话框/列表行样式；页面与组件不得再写散数值。
-- 主壳：内置 `TitleBar` 控件 + `NavigationView`（会话导航）+ 会话头/时间线/Composer 卡片/状态条。
+- 主壳：内置 `TitleBar` 控件 + `NavigationView`（会话导航）+ 会话头（仅标题与打开目录）+ 时间线 + Composer 卡片；
+  内容区最宽 960（`CirnoContentMaxWidth`）居中，窗口更宽时留白而不是拉长正文（ADR-136）。
 - 默认主题不加载任何图片，完全由 Fluent 资源与 Mica 构成；Mica 不可用时保留纯色回退层。
 - 插画主题由构建期产物装配：氛围背景（低不透明度）、两侧立绘（贴底、不遮挡交互）、内容遮罩。
 - 明/暗/高对比度三套字典齐备；高对比度下退回系统颜色，不做品牌着色。
@@ -150,11 +155,13 @@ themes/<id>.theme/manifest.json（roles + colorSource + displayName）
 
 ### 持久化
 
-- SQLite（WAL）：`sessions`（元数据、后端会话 id、provider、cwd）+ `items`（归一化条目，按 seq 排序）。
-  库文件在 `%LOCALAPPDATA%\Cirno\cirno.db`，可整体删除即回到干净状态。
-- 后端历史仍是恢复真相源；本地库是渲染与检索用的副本，可从后端历史重建。
-- 还原是惰性的：启动只读会话列表，点开某个会话才读它的条目；不启动任何后端进程，
+- 会话列表的**权威源是后端本地历史目录**（ADR-132）：Claude 即 `~/.claude/projects`（`CLAUDE_CONFIG_DIR` 可重定向），
+  经 `IAgentHistorySource` 暴露；目录里有什么会话，界面就列什么会话。
+- SQLite（WAL）降级为**渲染缓存**：`sessions`（元数据、后端会话 id、provider、cwd）+ `items`（归一化条目，按 seq 排序）。
+  库文件在 `%LOCALAPPDATA%\Cirno\cirno.db`，可整体删除——时间线下次打开时从历史目录重新导入。
+- 还原是惰性的：启动只做元数据扫描，点开某个会话才（必要时）导入并读条目；不启动任何后端进程，
   首次发送时才按 `ResumeSessionId` 恢复。
+- 删除会话 = 历史转录移入回收站 + 清本地库（回收站失败则中止，库保留可重试）。
 - 凭据单独存放于 Windows 凭据管理器。
 - 写入序号在内存里递增（不每条查 `MAX(seq)`）；批量写入用单事务；应用退出前把 WAL checkpoint 回主库。
 
@@ -162,7 +169,10 @@ themes/<id>.theme/manifest.json（roles + colorSource + displayName）
 
 - provider 是**进程级**配置：Claude 走环境变量，Codex 走其自身配置目录。
 - 因此「切换 provider」等于换进程，而不是运行期开关——UI 表现为会话属性，实现是进程池键。
-- 模型清单：Codex 由后端提供；Claude 无清单能力，用配置 + 后端回报的实际模型双向展示。
+- **界面当前只呈现单一后端**（Claude）：GUI 无后端选择与切换概念；架构层仍按多后端预留（M3 暂缓），
+  接入新后端只需实现 `IAgentBackend`（可选 `IAgentHistorySource`）并在组合根注册。
+- 模型清单：Codex 由后端提供；Claude 无清单能力。界面当前不提供模型选择器（ADR-134），
+  模型由后端配置或 `--model` 启动参数决定；后端回报的实际模型仍落库，供诊断使用。
 
 ## 重要技术边界
 

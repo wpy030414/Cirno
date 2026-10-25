@@ -105,6 +105,55 @@ public sealed class ClaudeHistorySourceTests : IDisposable
     }
 
     [Fact]
+    public void 命令回显不参与标题_取后一条人类消息()
+    {
+        var projectDir = CreateProject("C--work--echo");
+        CopyFixture(
+            "transcript-command-echo.jsonl",
+            projectDir,
+            "bbbbbbbb-cccc-dddd-eeee-ffffffffffff.jsonl");
+
+        var summary = Assert.Single(CreateSource().ListSessions());
+
+        // /clear 行（无 origin/isMeta）与自定义命令（origin=human）都不是用户说的话
+        Assert.Equal("真正的第一条消息", summary.Title);
+    }
+
+    [Fact]
+    public void ReadTranscript_命令回显不产出用户条目且提醒被剥离()
+    {
+        var projectDir = CreateProject("C--work--echo");
+        CopyFixture(
+            "transcript-command-echo.jsonl",
+            projectDir,
+            "bbbbbbbb-cccc-dddd-eeee-ffffffffffff.jsonl");
+
+        var summary = Assert.Single(CreateSource().ListSessions());
+        var transcript = CreateSource().ReadTranscript(summary);
+
+        Assert.NotNull(transcript);
+        var users = transcript!.Items
+            .Where(i => i.Kind == AgentItemKind.UserMessage)
+            .Select(i => i.Text)
+            .ToArray();
+
+        Assert.Equal(["真正的第一条消息", "第二条消息"], users);
+        Assert.Equal("真正的第一条消息", transcript.Summary.Title);
+    }
+
+    [Fact]
+    public void NormalizeStoredTitle_清洗旧库命令回显()
+    {
+        var source = CreateSource();
+
+        Assert.Equal(
+            "真正的标题",
+            source.NormalizeStoredTitle("真正的标题<command-name>/clear</command-name>"));
+        Assert.Null(source.NormalizeStoredTitle(
+            "<command-name>/clear</command-name>\n<command-message>clear</command-message>"));
+    }
+
+    [Fact]
     public void ReadTranscript_条目按行序排列且sidechain剔除()
     {
         var projectDir = CreateProject("C--work--demo");

@@ -25,6 +25,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private SessionViewModel? _active;
     private string? _newSessionModel;
+    private string _draftWorkingDirectory = Environment.CurrentDirectory;
+    private bool _hasDraft;
 
     public MainViewModel(
         string databasePath,
@@ -46,6 +48,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         // 界面上只有一个后端；架构层仍按多后端预留（M3 暂缓）
         _providerId = Orchestrator.Backends.FirstOrDefault()?.Id ?? "claude";
+        _draftWorkingDirectory = ResolveWorkingDirectory();
 
         // 副标题的相对时间要随时间滚动：「14 分钟前」放久了会变成谎言
         _subtitleTimer = dispatcher.CreateTimer();
@@ -77,6 +80,56 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         set => Set(ref _newSessionModel, value);
     }
 
+    /// <summary>
+    /// 草稿会话的工作目录。草稿不落库、不占侧栏，首条消息发送时才用它创建会话；
+    /// 会话一旦创建，目录即锁定（界面不再提供修改入口）。
+    /// </summary>
+    public string DraftWorkingDirectory
+    {
+        get => _draftWorkingDirectory;
+        private set => Set(ref _draftWorkingDirectory, value);
+    }
+
+    /// <summary>是否处于「新建会话草稿」状态（用户已点 +、但还没有发出消息）。</summary>
+    public bool HasDraft => _hasDraft;
+
+    /// <summary>
+    /// 进入新建会话草稿：只清空当前选择与设定工作目录，不写库、不动侧栏。
+    /// 已经在草稿态时再次调用不会丢掉用户已选的目录。
+    /// </summary>
+    public void BeginDraft(string? workingDirectory = null)
+    {
+        if (!string.IsNullOrWhiteSpace(workingDirectory))
+        {
+            DraftWorkingDirectory = workingDirectory;
+        }
+        else if (!_hasDraft)
+        {
+            DraftWorkingDirectory = ResolveWorkingDirectory();
+        }
+
+        _hasDraft = true;
+
+        if (_active is null)
+        {
+            // Set(null → null) 不会触发通知；显式通知一次，保证文件夹控件刷新
+            ActiveSessionChanged?.Invoke(this, EventArgs.Empty);
+        }
+        else
+        {
+            ActiveSession = null;
+        }
+    }
+
+    /// <summary>草稿态下选择工作目录；会话已开始时忽略（目录锁定）。</summary>
+    public void SetDraftWorkingDirectory(string workingDirectory)
+    {
+        if (_active is null && !string.IsNullOrWhiteSpace(workingDirectory))
+        {
+            DraftWorkingDirectory = workingDirectory;
+        }
+    }
+
     public SessionViewModel? ActiveSession
     {
         get => _active;
@@ -89,6 +142,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
             if (value is not null)
             {
+                _hasDraft = false;
                 _ = value.LoadHistoryAsync();
             }
 
@@ -106,7 +160,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             Sessions.Add(CreateViewModel(record));
         }
 
-        ActiveSession = Sessions.FirstOrDefault();
+        // 用户在扫描期间点了「+」时不要抢走草稿；否则默认打开最近一个会话
+        if (ActiveSession is null && !_hasDraft)
+        {
+            ActiveSession = Sessions.FirstOrDefault();
+        }
+
         RecomputeSummary();
     }
 
@@ -114,6 +173,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         var record = Orchestrator.CreateSession(_providerId, workingDirectory, model ?? NewSessionModel);
         var vm = CreateViewModel(record);
+
+        // 刚建的会话不可能已有转录：跳过首次历史扫描，避免发送瞬间在 UI 线程扫遍历史目录
+        vm.MarkHistoryLoaded();
+
         Sessions.Insert(0, vm);
         ActiveSession = vm;
         RecomputeSummary();
@@ -133,9 +196,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    /// <summary>新建会话时沿用最近一个会话的目录，没有就用当前目录。</summary>
+    /// <summary>新建会话默认用用户主目录（~）；工作目录由 Composer 在发送前选择。</summary>
     public string ResolveWorkingDirectory()
-        => Sessions.FirstOrDefault()?.WorkingDirectory ?? Environment.CurrentDirectory;
+    {
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return string.IsNullOrWhiteSpace(profile) ? Environment.CurrentDirectory : profile;
+    }
 
     /// <summary>开发期自检：把还原结果落成 JSON，用于无人值守断言。</summary>
     public async Task WriteRestoreReportAsync(string path)

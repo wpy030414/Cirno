@@ -163,6 +163,11 @@ public sealed class SessionViewModel : ObservableObject
     public Visibility StopVisibility => _isBusy ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>
+    /// 新建会话没有历史可导入；标记为已加载，跳过首次 LoadHistoryAsync 的目录扫描。
+    /// </summary>
+    public void MarkHistoryLoaded() => _historyLoaded = true;
+
+    /// <summary>
     /// 惰性加载历史：只有被选中过的会话才读库；首次可能触发历史目录导入（ADR-132）。
     /// 导入失败按发送失败同款落错——时间线给错误条目，界面不崩。
     /// </summary>

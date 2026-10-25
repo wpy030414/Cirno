@@ -3,7 +3,7 @@
 ## 要构建什么
 
 `Cirno.Agents.Claude` 与 `Cirno.Agents.Codex` 两个适配器：各自把一种 Agent 后端的 stdio 协议翻译成
-`Cirno.Agents.Abstractions` 定义的同一套归一化事件，并把界面上的决策（审批、中断、发送、换模型）
+`Cirno.Agents.Abstractions` 定义的同一套归一化事件，并把界面上的决策（审批、中断、发送）
 编码回对应后端的格式。
 
 判定标准：界面层不应出现任何后端专有字段名；新增第三种后端只需新增一个适配器。

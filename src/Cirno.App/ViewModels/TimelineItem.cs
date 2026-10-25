@@ -52,6 +52,7 @@ public sealed class TimelineItem : ObservableObject
             if (Set(ref _text, value))
             {
                 OnPropertyChanged(nameof(HasText));
+                OnPropertyChanged(nameof(Summary));
                 OnPropertyChanged(nameof(Body));
                 OnPropertyChanged(nameof(HasBody));
             }
@@ -73,17 +74,21 @@ public sealed class TimelineItem : ObservableObject
         }
     }
 
-    /// <summary>折叠状态下的一行摘要：详情首个非空行，超长截断。</summary>
+    /// <summary>
+    /// 折叠状态下的一行摘要：优先 Detail，没有则退回 Text（思考条目只有 Text），
+    /// 取首个非空行并截断——否则「思考」行永远空白，必须展开才知道想了什么。
+    /// </summary>
     public string Summary
     {
         get
         {
-            if (string.IsNullOrWhiteSpace(_detail))
+            var source = !string.IsNullOrWhiteSpace(_detail) ? _detail! : _text;
+            if (string.IsNullOrWhiteSpace(source))
             {
                 return string.Empty;
             }
 
-            var first = _detail
+            var first = source
                 .Split('\n')
                 .Select(l => l.Trim())
                 .FirstOrDefault(l => l.Length > 0) ?? string.Empty;

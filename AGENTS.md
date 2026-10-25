@@ -52,7 +52,7 @@ Cirno 是一个 WinUI 3 原生 Agent 座舱；本文件定义 Agent 在本仓库
 pnpm theme                          # 主题产物可生成、XML 合法、对比度闸门通过
 pnpm test:theme                     # 取色算法单测
 dotnet build apps/Cirno.slnx -p:Platform=x64   # 应用可编译
-dotnet test apps/Cirno.slnx -p:Platform=x64    # 协议夹具 + 存储层性能护栏（15 例）
+dotnet test apps/Cirno.slnx -p:Platform=x64    # 协议夹具 + 存储层性能护栏
 # 存储层基准：dotnet run --project tools/perf -- --items 10000
 # 打 MSI：installer\build-msi.ps1（需要 WiX 5，见 module-packaging spec）
 ```

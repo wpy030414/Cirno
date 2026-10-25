@@ -76,13 +76,51 @@ public sealed class SessionOrchestratorHistoryTests : IDisposable
         };
         _store.UpsertSession(orphan);
 
-        // pending：新建未发送，还没有转录文件
+        // pending：新建未发送，还没有转录文件；已有条目才会保留进列表
         var pending = _orchestrator.CreateSession("fake", @"C:\pending");
+        _orchestrator.AppendItems(pending.Id,
+        [
+            new AgentItem { Id = "p-1", Kind = AgentItemKind.UserMessage, Text = "还没写进转录" },
+        ]);
 
         var sessions = await _orchestrator.GetSessionsAsync();
 
         Assert.DoesNotContain(sessions, s => s.Id == orphan.Id);
         Assert.Contains(sessions, s => s.Id == pending.Id);
+    }
+
+    [Fact]
+    public async Task 零条目的pending会话_不列出()
+    {
+        // 旧版本点「+」留下的空壳：没有条目、也没有转录文件，不该占侧栏
+        var empty = _orchestrator.CreateSession("fake", @"C:\empty");
+
+        var sessions = await _orchestrator.GetSessionsAsync();
+
+        Assert.DoesNotContain(sessions, s => s.Id == empty.Id);
+    }
+
+    [Fact]
+    public async Task 库里的命令回显标题_列表回退时被清洗()
+    {
+        var id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        AddTranscript(id, title: null, lastActive: DateTimeOffset.UtcNow);
+
+        _store.UpsertSession(new SessionRecord
+        {
+            Id = id,
+            ProviderId = "fake",
+            WorkingDirectory = @"C:\external",
+            Title = "<command-name>/clear</command-name>",
+            BackendSessionId = id,
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-1),
+            UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-1),
+        });
+
+        var session = Assert.Single(await _orchestrator.GetSessionsAsync());
+
+        // 目录摘要没有标题 → 回退库里的旧值；旧值由历史源清洗（假源把 <command- 开头视为机器块）
+        Assert.Null(session.Title);
     }
 
     [Fact]
@@ -194,7 +232,7 @@ public sealed class SessionOrchestratorHistoryTests : IDisposable
 
     // ---------- 夹具 ----------
 
-    private FakeTranscript AddTranscript(string sessionId, string title, DateTimeOffset lastActive)
+    private FakeTranscript AddTranscript(string sessionId, string? title, DateTimeOffset lastActive)
     {
         var transcript = new FakeTranscript
         {
@@ -280,6 +318,10 @@ public sealed class SessionOrchestratorHistoryTests : IDisposable
         }
 
         public int ReadCount { get; private set; }
+
+        /// <summary>模拟 Claude 适配器的旧标题清洗：机器块标题一律丢弃。</summary>
+        public string? NormalizeStoredTitle(string? title)
+            => title is not null && title.StartsWith("<command-", StringComparison.Ordinal) ? null : title;
 
         public HistoryDeleteResult TryDeleteTranscript(string sessionId)
         {

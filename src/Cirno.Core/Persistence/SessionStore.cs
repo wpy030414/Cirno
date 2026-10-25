@@ -12,6 +12,9 @@ namespace Cirno.Core.Persistence;
 /// </summary>
 public sealed class SessionStore : IDisposable
 {
+    /// <summary>本地库的缓存格式版本（ADR-135）。</summary>
+    private const int CacheVersion = 1;
+
     private readonly SqliteConnection _connection;
     private readonly object _gate = new();
 
@@ -69,6 +72,32 @@ public sealed class SessionStore : IDisposable
             """);
 
         Execute("CREATE INDEX IF NOT EXISTS ix_items_session_seq ON items(session_id, seq);");
+
+        MigrateCache();
+    }
+
+    /// <summary>
+    /// 一次性缓存迁移：旧版本把斜杠命令回显写进过标题与时间线。
+    /// SQLite 只是可重建缓存（ADR-132/ADR-135），清掉历史会话的条目与标题，
+    /// 下次点开时按新的清洗规则重新导入；pending 会话（没有转录文件）不受影响。
+    /// </summary>
+    private void MigrateCache()
+    {
+        using (var read = _connection.CreateCommand())
+        {
+            read.CommandText = "PRAGMA user_version;";
+            if (Convert.ToInt32(read.ExecuteScalar(), CultureInfo.InvariantCulture) >= CacheVersion)
+            {
+                return;
+            }
+        }
+
+        Execute($"""
+            DELETE FROM items WHERE session_id IN (
+                SELECT id FROM sessions WHERE backend_session_id IS NOT NULL);
+            UPDATE sessions SET title = NULL WHERE backend_session_id IS NOT NULL;
+            PRAGMA user_version = {CacheVersion};
+            """);
     }
 
     public IReadOnlyList<SessionRecord> ListSessions()

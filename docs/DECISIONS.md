@@ -364,3 +364,120 @@
     的激活器，撞上 `required` 成员而编译失败；行内改用经典 `Binding`。
   - 材质不可用时必须有纯色层，否则深色下透明根元素会让文字落在白底上不可读。
 - 何时重新审视：需要跟随系统主题（第三态）、或改为多页面导航时。
+
+## ADR-132：会话列表以后端本地历史目录为权威源
+- 日期：2026-10-25
+- 状态：已采纳
+- 背景：会话列表此前只来自 Cirno 自己的 SQLite 库，终端里直接用 CLI 开的会话对 Cirno 不可见；
+  ADR-104 预留的「恢复会话时一次导入与去重」缺口从未实现。用户要求以本地 Claude Code 目录为权威源。
+  实测（CLI 2.1.301）目录布局为 `~/.claude/projects/<munged-cwd>/<session-uuid>.jsonl`（`CLAUDE_CONFIG_DIR` 可重定向根），
+  Cirno 经 `--session-id` 指定的 UUID 落盘同名，两种来源同处一个命名空间。
+- 考虑过的方案：每次启动全量解析目录（ADR-104 已否决）；目录元数据扫描作列表权威 + 首次打开惰性导入 SQLite；放弃本地库直读渲染。
+- 决策：
+  1. Abstractions 新增 `IAgentHistorySource`（`ListSessions` 元数据扫描 / `ReadTranscript` 全量解析 /
+     `TryDeleteTranscript` 移入回收站），`IAgentBackend.History` 默认 null，Claude 适配器实现之。
+  2. `GetSessionsAsync` 以目录扫描为准：每文件只窥读前 64KB（cwd / 首时间戳 / 首条人类消息 / 末条 ai-title 或 summary），
+     `LastActiveAt` 用文件 mtime；SQLite 只补充运行期字段（model/title）与 pending 会话
+     （`backend_session_id` 为空、还没有转录文件的）。库里有、目录里没有的会话不再列出（条目留库，文件恢复后自然重现）。
+  3. 时间线惰性导入：`LoadItemsAsync` 在库无条目、或文件 mtime 晚于库 `updated_at` 时，
+     解析转录并 `ReplaceItems` 整体重建（单事务 DELETE+INSERT）。活会话（进程在跑）不重导入，避免与 live 写入竞态。
+  4. 标题优先级：ai-title > summary > 首条用户消息（折行、截 42 字，与既有规则一致）。
+  5. 删除会话 = 转录移入 Windows 回收站 + 清本地库；回收站失败则中止删除（库保留，可重试）。
+- 为什么选这个：元数据扫描把 ADR-104 否决的理由（启动全量解析、双格式 UI 数据源）拆掉了——
+  列表只需文件名/mtime/64KB 窥读，时间线仍走既有 SQLite 渲染管线；「权威源」落在「什么会话存在」这一个问题上是用户要的语义。
+- 为什么不选其他：直读渲染放弃本地库会丢掉 ADR-128 的性能护栏与既有还原路径；
+  全量解析已被 ADR-104 以性能理由否决，且 1MB+ 转录文件逐个解析会拖慢冷启动。
+- 后果（踩过的坑）：
+  - live 落库的 user 条目 id（`user:<guid:n>`）与转录行 `uuid` 不同源，按 item_id 去重不可靠——
+    导入幂等必须建立在 `ReplaceItems` 整体重建上，不能靠 `AppendItems` 的 id 巧合。
+  - 转录 user 行 content 既可能是字符串也可能是 `array[text]`；人类输入判定须综合 `isMeta`/`isSidechain`/`origin.kind`，
+    否则会把命令回显与宿主注入的提醒当作用户消息。
+  - 回收站 API 不能用 `Microsoft.VisualBasic.FileIO`：.NET 10 共享框架里没有它（在 WindowsDesktop 框架），
+    适配器是纯 `net10.0` 不能拖 WinForms——改用 `SHFileOperationW` P/Invoke（字段序对照 SDK `shellapi.h`，专用 STA 线程）。
+  - pending 会话必须从库保留进列表，否则「新建但未发送」的会话会在侧栏凭空消失。
+- 何时重新审视：Claude Code 提供稳定的跨客户端会话查询协议时（回到 ADR-104 的重审条件）；
+  或 Codex 后端接入时（其 `thread/list` 官方 API 与文件目录语义需要重新对齐）。
+
+## ADR-133：新建会话改为草稿态，首条消息才落库入列
+- 日期：2026-10-25
+- 状态：已采纳
+- 背景：点「+」立刻调用 `SessionOrchestrator.CreateSession` 写 SQLite 并插入侧栏，用户还没发任何消息就先得到一个「新会话」条目；
+  工作目录由侧栏的文件夹按钮在创建瞬间决定，输入前没有调整机会。侧栏因此出现大量空壳，与「列表只反映真实会话」的直觉相悖。
+- 考虑过的方案：先落库但侧栏隐藏到首条消息；纯 UI 草稿，首条消息时才创建会话。
+- 决策：
+  1. `MainViewModel` 增加草稿态：`DraftWorkingDirectory` + `BeginDraft()`，`ActiveSession` 置空；草稿不写库、不占侧栏。
+  2. `MainWindow.SendAsync` 在无活动会话时先 `CreateSession(DraftWorkingDirectory)` 再发送——发送是会话的诞生时刻。
+  3. 工作目录在会话创建后锁定：Composer 的选择控件只存在于草稿态，会话开始后不再出现。
+  4. 收窄 ADR-132 的 pending 保留规则：`backend_session_id` 为空且**条目数为 0** 的会话不再列出（旧版本遗留的空壳）。
+  5. `RestoreAsync` 不再无条件选中第一项：用户已在草稿态时保留草稿，不抢选择。
+- 为什么选这个：草稿是纯视图状态，最符合「还没发生的事不写进账本」；也避免 ADR-132 的 pending 语义把幽灵会话带回列表。
+- 为什么不选其他：先落库再隐藏会污染数据库，重启后仍要靠过滤规则维持「不可见」，且删除/切换/退出都要额外处理幽灵记录。
+- 后果：
+  - 旧版本点「+」留下的零条目 pending 在升级后从侧栏消失（条目与标题不受影响）。
+  - 托盘、跳转列表、Ctrl+N 的「新建会话」统一变成「进入草稿」，带 prompt 的启动意图在发送时才落库。
+  - 新建会话跳过首次历史扫描（`MarkHistoryLoaded`），避免发送瞬间在 UI 线程遍历历史目录。
+- 何时重新审视：需要「会话模板」或「预创建后排队」时（草稿可能要持久化）。
+
+## ADR-134：界面移除模型选择与状态/路径行，右上角改为打开工作目录
+- 日期：2026-10-25
+- 状态：已采纳
+- 背景：右上角模型选择器只影响「下一个」会话（模型是进程级属性），与当前会话无关，概念成本高于收益；
+  top-bar 同时显示状态、模型、用量与工作目录三行，把视觉重心从内容挪到了元信息；侧栏另有「在目录中新建会话」按钮，与 Composer 的目录选择重叠。
+- 考虑过的方案：保留选择器但降级为详情面板；彻底移除，模型只由配置/启动参数决定。
+- 决策：
+  1. 删除模型选择器；`--model` 仍是新建会话指定模型的唯一入口（开发/自检）。
+  2. 主内容区 top-bar 只显示标题；状态交给侧栏状态点与底部聚合状态条。
+  3. 原选择器位置改为文件夹图标：在资源管理器中打开当前会话（或草稿）的工作目录。
+  4. 侧栏顶部只保留「+」；删除中心空状态的「新建会话」按钮。
+  5. `SessionHost` 内的 `{Binding}` 一律带 `FallbackValue`：草稿态 DataContext 为空时，
+     Stop 按钮不得按 `Visibility` 默认值露出，标题应显示「新会话」。
+- 为什么选这个：界面只保留「会话列表 + 标题 + 时间线 + 输入」四件事；模型与用量是诊断信息，不是日常决策点。
+- 为什么不选其他：保留选择器再加解释文案，只会把复杂度留在最重要的位置；放到详情面板等于另行设计一个页面，超出当前阶段。
+- 后果：模型不再在界面可见（后端回报仍落库，可用 `--restore-check` 或 `sqlite` 查）；
+  README/PRD 中「会话级模型可见/可选」的表述需要同步修订。M3 恢复 provider 选择时再重新设计呈现。
+- 何时重新审视：Codex 后端接入、需要会话级模型切换时。
+
+## ADR-135：历史导入清洗斜杠命令回显（标题与时间线）
+- 日期：2026-10-25
+- 状态：已采纳
+- 背景：侧栏出现标题 `<command-name>/clear</command-name>`，时间线也会把命令回显当用户气泡导入。
+  实测 CLI 2.1.301 的 `/clear` 行 `type=user`、**无 `origin`、无 `isMeta`**，content 为
+  `<command-name>…</command-name><command-message>…</command-message><command-args>…</command-args>`（带缩进）；
+  自定义命令（如 `/xat:upload-repo`）的 `origin.kind` 反而是 `human`。ADR-132 只按 `isMeta/isSidechain/origin` 判定人类输入，前提被真实数据推翻。
+- 考虑过的方案：只靠 origin 判定；只在标题归一化时清洗；读取层统一剥离机器块。
+- 决策：
+  1. 新增 `ClaudeUserText.Sanitize`：成对剥离 `<command-name>`、`<command-message>`、`<command-args>`、
+     `<local-command-caveat>`、`<local-command-stdout>`、`<system-reminder>`，Trim 后为空即视为机器行。
+  2. 读取路径共用：历史标题提取（`ClaudeHistorySource`）与转录导入（`ClaudeEventParser.TryReadHumanPrompt`）。
+     用户实际发送的文本（`ClaudeSession.SendUserMessageAsync`）绝不经过清洗。
+  3. `IAgentHistorySource` 增加默认方法 `NormalizeStoredTitle`，列表回退到库内旧标题时由适配器清洗。
+  4. `ReadTranscript` 用全量解析出的首条人类消息补标题（覆盖 64KB 窥读窗口外的首条消息）；
+     `LoadItemsAsync` 导入后触发 `SessionChanged`，侧栏无需重启即可刷新。
+  5. 本地库加 `PRAGMA user_version` 一次性缓存迁移：清掉有转录文件会话的条目与标题，
+     下次打开按新规则重导入（SQLite 是可重建缓存，ADR-132）。
+- 为什么选这个：机器块的形态由适配器决定，清洗必须留在 Claude 适配器内；标题与时间线共用同一判定，避免两处漂移。
+- 为什么不选其他：只改标题会留下时间线气泡；在 `SessionStore` 或 Core 里清洗会把后端专有格式泄漏进存储层/编排层。
+- 后果：
+  - 人类正文若完整引用这些标签会被剥离（可接受；正文里成对出现的情形极少）。
+  - 升级后首次启动会清空历史会话的本地条目，点开时重新导入；pending（无转录）会话不受影响。
+- 何时重新审视：Claude Code 改变命令回显格式，或提供结构化的用户消息类型时。
+
+## ADR-136：主界面第二轮体验修正（默认目录、阅读位置、宽度、思考预览、Composer 焦点、图标）
+- 日期：2026-10-25
+- 状态：已采纳
+- 背景：第一轮简化后仍有七处体验问题：新会话默认目录不是家目录；进入会话停在时间线顶部；
+  窗口拉宽后正文被拉到整屏；思考条目折叠时不显示任何文字；底部常驻「N 个会话」状态条占空间；
+  Composer 的 TextBox 在获得焦点时叠出白底与蓝色下划线；应用图标仍是旧图。
+- 决策：
+  1. 新会话默认工作目录固定为用户主目录（`~`），不再沿用最近会话；Composer 在发送前仍可选择。
+  2. 进入会话或历史批量导入（`Reset`）后强制滚到时间线底部；内容到达时仍按「距底部 240px 内才跟随」的规则。
+  3. 内容区最大宽度取 `CirnoContentMaxWidth`（960），窗口更宽时居中留白；宽度在 `SizeChanged` 里夹取。
+  4. 时间线条目的折叠摘要优先 Detail，没有则回退 Text——思考条目只有 Text，此前摘要永远为空。
+  5. 删除主内容区底部的全局状态条；聚合状态继续供给任务栏/托盘（`SummaryChanged` 仍在）。
+  6. Composer 的 TextBox 覆盖 `TextControlBackground*` / `TextControlBorder*` / 聚焦厚度等主题资源为透明与 0，
+     使输入框与卡片同面，彻底去掉焦点白底与蓝色下划线。
+  7. 应用图标重绘为暖墨底、奶油色帆船与陶土色 Claude 星芒：多尺寸 ICO（16–256，PNG 条目），
+     同时用于 exe、标题栏与任务栏。
+- 为什么选这个：这些都是「阅读与输入」路径上的摩擦，修复集中在视图层，不动会话与协议语义。
+- 后果：思考条目摘要是纯文本首行（不解析 Markdown）；状态条移除后，单会话细节只在侧栏状态点体现。
+- 何时重新审视：需要展示会话用量/模型等元信息时（应另设详情面板，而不是恢复状态行）。

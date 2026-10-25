@@ -199,6 +199,23 @@ public class ClaudeProtocolFixtureTests
     }
 
     [Fact]
+    public void 转录模式_命令回显不产出UserMessage()
+    {
+        var sink = new RecordingSink();
+        ParseFixture("transcript-command-echo.jsonl", sink, emitUserMessages: true);
+
+        var users = sink.EventsOfType<ItemCompletedEvent>()
+            .Where(c => c.Item.Kind == AgentItemKind.UserMessage)
+            .Select(c => c.Item.Text)
+            .ToArray();
+
+        // /clear 回显与自定义命令回显都被剔除；正文里的 system-reminder 一并剥掉
+        Assert.Equal(["真正的第一条消息", "第二条消息"], users);
+        Assert.DoesNotContain(users, text => text is not null && text.Contains("command-name"));
+        Assert.DoesNotContain(users, text => text is not null && text.Contains("system-reminder"));
+    }
+
+    [Fact]
     public void ai_title与summary行_触发标题事件且末值优先()
     {
         var titles = new List<string>();

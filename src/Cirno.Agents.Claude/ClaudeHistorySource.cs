@@ -109,9 +109,23 @@ public sealed class ClaudeHistorySource : IAgentHistorySource
         }
 
         var items = collector.Items;
+
+        // 64KB 窥读窗口之外才出现首条人类消息时（头部噪声很长），全量解析可以补上标题：
+        // 解析结果里的 UserMessage 已经过机器块清洗，直接拿来当标题来源。
+        var enriched = summary;
+        if (string.IsNullOrWhiteSpace(summary.Title))
+        {
+            var firstHuman = items.FirstOrDefault(
+                i => i.Kind == AgentItemKind.UserMessage && !string.IsNullOrWhiteSpace(i.Text));
+            if (firstHuman is not null)
+            {
+                enriched = summary with { Title = NormalizeTitle(firstHuman.Text) };
+            }
+        }
+
         return new HistoricalTranscript
         {
-            Summary = summary,
+            Summary = enriched,
             Items = items,
             LastTimestamp = items.Count > 0 ? items.Max(i => i.Timestamp) : null,
         };
@@ -134,6 +148,11 @@ public sealed class ClaudeHistorySource : IAgentHistorySource
             return HistoryDeleteResult.Failed;
         }
     }
+
+    /// <summary>
+    /// 旧版本曾把斜杠命令回显写进库里的标题；列表回退到库值时过一遍同一清洗器。
+    /// </summary>
+    public string? NormalizeStoredTitle(string? title) => ClaudeUserText.Sanitize(title);
 
     // ---------- 内部 ----------
 
@@ -323,7 +342,7 @@ public sealed class ClaudeHistorySource : IAgentHistorySource
             return null;
         }
 
-        return content.ValueKind switch
+        var raw = content.ValueKind switch
         {
             JsonValueKind.String => content.GetString(),
             JsonValueKind.Array => string.Join('\n', content.EnumerateArray()
@@ -331,17 +350,22 @@ public sealed class ClaudeHistorySource : IAgentHistorySource
                 .Select(b => ClaudeEventParser.GetString(b, "text"))),
             _ => null,
         };
+
+        // 斜杠命令回显、宿主提醒不是用户说的话；清洗后为空则不占位，
+        // 让扫描继续找后面真正的人类消息。
+        return ClaudeUserText.Sanitize(raw);
     }
 
     /// <summary>折行合并、截断，与编排层 TrySetTitle 同一条规则。</summary>
     private static string? NormalizeTitle(string? text)
     {
-        if (string.IsNullOrWhiteSpace(text))
+        var sanitized = ClaudeUserText.Sanitize(text);
+        if (sanitized is null)
         {
             return null;
         }
 
-        var title = string.Join(' ', text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)).Trim();
+        var title = string.Join(' ', sanitized.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)).Trim();
         if (title.Length == 0)
         {
             return null;
