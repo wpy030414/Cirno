@@ -79,7 +79,6 @@ public sealed partial class MainWindow : Window
             DispatcherQueue,
             autoApprove: HasFlag("--auto-approve"),
             tracePath: ReadArgument("--trace"),
-            preferredProviderId: ReadArgument("--provider"),
             onProcessStarted: pid =>
             {
                 var assigned = _shell.AssignProcessToJob(pid);
@@ -129,8 +128,6 @@ public sealed partial class MainWindow : Window
         _main.NewSessionModel = (ModelPicker.SelectedItem as ModelOption)?.Value;
 
         RegisterAccelerators();
-        ProviderPicker.ItemsSource = _main.Backends;
-        ProviderPicker.SelectedItem = _main.Backends.FirstOrDefault(b => b.Id == _main.DefaultProviderId);
 
         var requestedId = ReadArgument("--theme");
         var initial = _themes.Themes.FirstOrDefault(
@@ -405,23 +402,33 @@ public sealed partial class MainWindow : Window
         {
             XamlRoot = RootGrid.XamlRoot,
             Title = "删除会话",
-            Content = $"将删除「{vm.Title}」的本地记录与时间线；后端侧的历史文件不受影响。",
+            Content = $"将删除会话「{vm.Title}」：历史文件移入回收站，本地记录与时间线一并清除。",
             PrimaryButtonText = "删除",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
         };
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        try
         {
             await _main.DeleteAsync(vm);
         }
-    }
-
-    private void OnProviderSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_ready && ProviderPicker.SelectedItem is Cirno.Agents.Abstractions.IAgentBackend backend)
+        catch (Exception ex)
         {
-            _main.DefaultProviderId = backend.Id;
+            // 历史文件移入回收站失败等：会话原样保留，用户可重试
+            var failure = new ContentDialog
+            {
+                XamlRoot = RootGrid.XamlRoot,
+                Title = "删除失败",
+                Content = ex.Message,
+                CloseButtonText = "知道了",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            await failure.ShowAsync();
         }
     }
 

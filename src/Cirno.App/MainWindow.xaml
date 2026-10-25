@@ -286,7 +286,8 @@
                         <Grid
                             MinHeight="56"
                             Padding="10,8"
-                            RowSpacing="2">
+                            RowSpacing="2"
+                            ToolTipService.ToolTip="{Binding SidebarToolTip}">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
@@ -422,7 +423,7 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <!-- 会话头：标题 + provider/状态/模型/用量 + 新建会话的默认后端与模型 -->
+                        <!-- 会话头：标题 + 状态/模型/用量 + 新建会话的默认模型 -->
                         <Grid
                             Grid.Row="0"
                             Padding="24,12,24,8"
@@ -439,14 +440,8 @@
                                     TextTrimming="CharacterEllipsis" />
                                 <TextBlock
                                     Style="{StaticResource CirnoCaptionSecondaryStyle}"
-                                    TextWrapping="Wrap">
-                                    <Run Text="{Binding ProviderLabel}" />
-                                    <Run Text=" · " />
-                                    <Run Text="{Binding StatusText}" />
-                                    <Run Text=" · " />
-                                    <Run Text="{Binding ModelText}" />
-                                    <Run Text="{Binding UsageText}" />
-                                </TextBlock>
+                                    Text="{Binding HeaderLine}"
+                                    TextTrimming="CharacterEllipsis" />
                                 <TextBlock
                                     x:Name="WorkingDirectoryText"
                                     Style="{StaticResource CirnoCaptionTertiaryStyle}"
@@ -458,14 +453,6 @@
                                 VerticalAlignment="Top"
                                 Orientation="Horizontal"
                                 Spacing="6">
-                                <ComboBox
-                                    x:Name="ProviderPicker"
-                                    MinWidth="128"
-                                    AutomationProperties.Name="后端"
-                                    DisplayMemberPath="DisplayName"
-                                    FontSize="12"
-                                    SelectionChanged="OnProviderSelectionChanged"
-                                    ToolTipService.ToolTip="新建会话使用的后端" />
                                 <ComboBox
                                     x:Name="ModelPicker"
                                     MinWidth="128"
@@ -541,7 +528,7 @@
                                         Background="Transparent"
                                         BorderThickness="0"
                                         KeyDown="OnComposerKeyDown"
-                                        PlaceholderText="向 Claude 提问…"
+                                        PlaceholderText="描述要完成的任务…"
                                         TextWrapping="Wrap" />
 
                                     <Grid Grid.Row="1" ColumnSpacing="8">

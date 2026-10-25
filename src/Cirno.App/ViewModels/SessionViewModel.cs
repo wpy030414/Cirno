@@ -68,14 +68,28 @@ public sealed class SessionViewModel : ObservableObject
 
     public string WorkingDirectory => _record.WorkingDirectory;
 
-    public string ProviderLabel => _record.ProviderId switch
+    /// <summary>项目文件夹名（只取末段，全路径在 tooltip 里）。</summary>
+    public string FolderName
     {
-        "claude" => "Claude Code",
-        "codex" => "Codex",
-        _ => _record.ProviderId,
-    };
+        get
+        {
+            var trimmed = _record.WorkingDirectory.TrimEnd(
+                [System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar]);
+            var name = System.IO.Path.GetFileName(trimmed);
+            return string.IsNullOrEmpty(name) ? _record.WorkingDirectory : name;
+        }
+    }
 
-    public string SubtitleLine => $"{ProviderLabel} · {_statusText}";
+    /// <summary>侧栏副标题：最后交流时间 · 项目文件夹。状态交给右上角状态点与会话头。</summary>
+    public string SubtitleLine => $"{Services.RelativeTime.Format(_record.UpdatedAt)} · {FolderName}";
+
+    /// <summary>悬停提示：完整目录路径 + 精确的最后交流时间。</summary>
+    public string SidebarToolTip
+        => $"{_record.WorkingDirectory}\n最后交流：{Services.RelativeTime.FormatExact(_record.UpdatedAt)}";
+
+    /// <summary>会话头一行：状态 · 模型 · 用量（非空项拼接）。</summary>
+    public string HeaderLine =>
+        string.Join(" · ", new[] { _statusText, _modelText, _usageText }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
     public string StatusText
     {
@@ -84,7 +98,7 @@ public sealed class SessionViewModel : ObservableObject
         {
             if (Set(ref _statusText, value))
             {
-                OnPropertyChanged(nameof(SubtitleLine));
+                OnPropertyChanged(nameof(HeaderLine));
             }
         }
     }
@@ -92,13 +106,25 @@ public sealed class SessionViewModel : ObservableObject
     public string ModelText
     {
         get => _modelText;
-        private set => Set(ref _modelText, value);
+        private set
+        {
+            if (Set(ref _modelText, value))
+            {
+                OnPropertyChanged(nameof(HeaderLine));
+            }
+        }
     }
 
     public string UsageText
     {
         get => _usageText;
-        private set => Set(ref _usageText, value);
+        private set
+        {
+            if (Set(ref _usageText, value))
+            {
+                OnPropertyChanged(nameof(HeaderLine));
+            }
+        }
     }
 
     public AgentSessionState State => _state;
@@ -180,13 +206,21 @@ public sealed class SessionViewModel : ObservableObject
         _record = record;
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(WorkingDirectory));
-        OnPropertyChanged(nameof(ProviderLabel));
+        OnPropertyChanged(nameof(FolderName));
         OnPropertyChanged(nameof(SubtitleLine));
+        OnPropertyChanged(nameof(SidebarToolTip));
         // 后端回报的实际模型优先于创建时的入参（别名会被解析成具体版本）
         if (_reportedModel is null && !string.IsNullOrWhiteSpace(record.Model))
         {
             ModelText = record.Model;
         }
+    }
+
+    /// <summary>相对时间随时间流逝滚动刷新（一分钟粒度足够）。</summary>
+    public void RefreshTimeDerivedProperties()
+    {
+        OnPropertyChanged(nameof(SubtitleLine));
+        OnPropertyChanged(nameof(SidebarToolTip));
     }
 
     public async Task SendAsync(string text)

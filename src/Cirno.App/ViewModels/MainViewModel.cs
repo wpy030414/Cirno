@@ -20,9 +20,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly DispatcherQueue _dispatcher;
     private readonly bool _autoApprove;
     private readonly string? _tracePath;
+    private readonly string _providerId;
+    private readonly DispatcherQueueTimer _subtitleTimer;
 
     private SessionViewModel? _active;
-    private string _defaultProviderId;
     private string? _newSessionModel;
 
     public MainViewModel(
@@ -31,7 +32,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         DispatcherQueue dispatcher,
         bool autoApprove,
         string? tracePath,
-        string? preferredProviderId = null,
         Action<int>? onProcessStarted = null)
     {
         _dispatcher = dispatcher;
@@ -44,36 +44,31 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         Orchestrator.SessionChanged += OnSessionChanged;
         Orchestrator.SessionStateChanged += OnSessionStateChanged;
 
-        _defaultProviderId = preferredProviderId is not null && Orchestrator.GetBackend(preferredProviderId) is not null
-            ? preferredProviderId
-            : Orchestrator.Backends.FirstOrDefault()?.Id ?? "claude";
+        // 界面上只有一个后端；架构层仍按多后端预留（M3 暂缓）
+        _providerId = Orchestrator.Backends.FirstOrDefault()?.Id ?? "claude";
+
+        // 副标题的相对时间要随时间滚动：「14 分钟前」放久了会变成谎言
+        _subtitleTimer = dispatcher.CreateTimer();
+        _subtitleTimer.Interval = TimeSpan.FromSeconds(60);
+        _subtitleTimer.IsRepeating = true;
+        _subtitleTimer.Tick += (_, _) =>
+        {
+            foreach (var session in Sessions)
+            {
+                session.RefreshTimeDerivedProperties();
+            }
+        };
+        _subtitleTimer.Start();
     }
 
     public SessionOrchestrator Orchestrator { get; }
 
     public ObservableCollection<SessionViewModel> Sessions { get; } = [];
 
-    public IReadOnlyList<IAgentBackend> Backends => Orchestrator.Backends;
-
     public event EventHandler? ActiveSessionChanged;
 
     /// <summary>会话状态聚合变化（总数/运行/待审批/失败）。</summary>
     public event Action<SessionSummary>? SummaryChanged;
-
-    public string DefaultProviderId
-    {
-        get => _defaultProviderId;
-        set
-        {
-            if (Set(ref _defaultProviderId, value))
-            {
-                OnPropertyChanged(nameof(DefaultProviderLabel));
-            }
-        }
-    }
-
-    public string DefaultProviderLabel
-        => Orchestrator.GetBackend(_defaultProviderId)?.DisplayName ?? _defaultProviderId;
 
     /// <summary>新建会话使用的模型；null 表示跟随后端默认。</summary>
     public string? NewSessionModel
@@ -115,15 +110,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RecomputeSummary();
     }
 
-    public SessionViewModel CreateSession(
-        string workingDirectory,
-        string? providerId = null,
-        string? model = null)
+    public SessionViewModel CreateSession(string workingDirectory, string? model = null)
     {
-        var record = Orchestrator.CreateSession(
-            providerId ?? DefaultProviderId,
-            workingDirectory,
-            model ?? NewSessionModel);
+        var record = Orchestrator.CreateSession(_providerId, workingDirectory, model ?? NewSessionModel);
         var vm = CreateViewModel(record);
         Sessions.Insert(0, vm);
         ActiveSession = vm;
@@ -211,6 +200,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _subtitleTimer.Stop();
         await Orchestrator.DisposeAsync();
         _store.Dispose();
     }
