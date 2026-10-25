@@ -1,0 +1,219 @@
+name: Windows Build
+
+# 产品是 Windows 专属的 WinUI 3 桌面应用（ADR-101）。
+#
+# 与 Ceobe 的流程保持一致，但有三处 Cirno 特有的差异：
+#   · 主题资源是构建期产物，publish 之前必须先跑 pnpm theme；
+#   · 测试是离线的（协议夹具 + 假 CLI，不访问网络），因此放进 CI 作为回归门；
+#   · 只交付一档产物：自包含 MSI + 同目录 portable zip（没有 CLI，也不做框架依赖档）。
+#
+# 版本号唯一来源是 Directory.Build.props 的 <Version>；CI 只读不写，
+# 产物名、MSI ProductVersion、Release tag 全部由它派生。
+# main 推送即发布 Release（同名先删后建，保持幂等）。
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  NODE_VERSION: '22'
+  PNPM_VERSION: '11'
+  WIX_VERSION: '5.0.2'
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+jobs:
+  build:
+    name: Build & Package
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      msi_version: ${{ steps.ver.outputs.msi_version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install theme toolchain
+        run: pnpm install --frozen-lockfile
+
+      - name: Build theme assets
+        run: pnpm theme
+
+      - name: Test theme pipeline
+        run: pnpm test:theme
+
+      # 版本权威：只认 Directory.Build.props 的 <Version>。
+      # 三段 26.10.26 原样使用；四段 26.10.26.01 还原为显示形态 26.10.26-01。
+      # MSI ProductVersion 只接受 1-3 段数字，故取前三段。
+      - name: Read version from Directory.Build.props
+        id: ver
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content Directory.Build.props
+          $raw = ($props.Project.PropertyGroup | ForEach-Object { $_.Version } |
+                  Where-Object { $_ } | Select-Object -First 1)
+          if (-not $raw) { throw "Directory.Build.props 缺少 <Version>" }
+          $parts = $raw.Split('.')
+          if ($parts.Count -ge 4) {
+            $display = ($parts[0..2] -join '.') + '-' + ($parts[3..($parts.Count - 1)] -join '.')
+            $msi     = ($parts[0..2] -join '.')
+          } else {
+            $display = $raw
+            $msi     = $raw
+          }
+          Write-Output "Version from props: $raw -> display=$display msi=$msi"
+          "version=$display" >> $env:GITHUB_OUTPUT
+          "msi_version=$msi" >> $env:GITHUB_OUTPUT
+
+      - name: Restore
+        run: dotnet restore Cirno.slnx
+
+      # 架构闸门：Agents.* 与 Core 必须保持 net10.0 且零 WinUI 依赖。
+      # 这是编译期分层约定的 CI 守卫（静态 grep，不是测试）。
+      - name: Gate - agents and core must not reference WinUI
+        shell: pwsh
+        run: |
+          $roots = @('src/Cirno.Agents.Abstractions', 'src/Cirno.Agents.Claude', 'src/Cirno.Core')
+          $files = Get-ChildItem $roots -Recurse -Filter *.cs |
+                   Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' }
+          $hits = $files | Select-String -Pattern '^\s*using\s+(Microsoft|Windows)\.UI'
+          if ($hits) {
+            $hits | ForEach-Object { Write-Error "$($_.Path):$($_.LineNumber): $($_.Line)" }
+            exit 1
+          }
+          foreach ($root in $roots) {
+            Get-ChildItem $root -Recurse -Filter *.csproj | ForEach-Object {
+              $proj = Get-Content $_.FullName -Raw
+              if ($proj -match 'WindowsAppSDK|Microsoft\.UI\.Xaml') {
+                throw "$($_.FullName) must not reference WindowsAppSDK / WinUI"
+              }
+            }
+          }
+
+      - name: Build
+        run: dotnet build Cirno.slnx -c Release --no-restore
+
+      # Cirno 的测试是离线的（夹具回放 + 假 CLI），放 CI 作为协议回归门。
+      - name: Test
+        run: dotnet test Cirno.slnx -c Release --no-build
+
+      # WiX 5 + Util 扩展：与本地 build-msi.ps1 使用同一条工具链（ADR-121）。
+      # 脚本会自己把 Util 扩展装进 WiX 的扩展目录。
+      - name: Install WiX 5
+        run: dotnet tool install --tool-path .workbuddy/tools wix --version ${{ env.WIX_VERSION }}
+
+      # 自包含发布 → VC 运行库 → 组件清单 → MSI。
+      # 脚本自己从 Directory.Build.props 取版本，不需要外部传参。
+      - name: Build MSI
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tools/installer/build-msi.ps1 -Configuration Release
+
+      # 产物完整性：exe / PRI / WinUI 原生 / 图标 / 主题资源缺一不可。
+      - name: Verify publish payload
+        shell: pwsh
+        run: |
+          $required = @(
+            'artifacts/publish/Cirno.exe',
+            'artifacts/publish/Cirno.pri',
+            'artifacts/publish/Microsoft.ui.xaml.dll',
+            'artifacts/publish/Assets/cirno.ico',
+            'artifacts/publish/Themes/themes.json',
+            'artifacts/publish/Themes/dafeiyu/Theme.xaml'
+          )
+          foreach ($p in $required) {
+            if (-not (Test-Path $p)) { throw "missing: $p" }
+          }
+
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          Compress-Archive -Path 'artifacts/publish/*' -DestinationPath "Cirno-$v-portable-x64.zip" -Force
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item artifacts/*.msi dist/ -Force
+          Copy-Item *.zip dist/ -Force
+          Get-ChildItem dist | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: Cirno-windows
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # main 推送即发布；PR 只构建不发布。
+  # 版本号来自 props，tag 与 Release 名由它派生——不再手动打 tag，
+  # 同一版本重复推送时先删后建（幂等收敛）。
+  release:
+    name: Publish Release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: Cirno-windows
+          path: dist
+
+      - name: Publish to GitHub Releases
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = "${{ needs.build.outputs.version }}"
+          $tag = "v$v"
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release delete $tag --yes --cleanup-tag
+          }
+          $notes = @"
+          ## 选哪个包
+
+          | 包 | 大小 | 适用 | 需要先装 |
+          |---|---|---|---|
+          | Cirno-$v-x64.msi | ~82M | **Win11 推荐**，按用户安装 | 无 |
+          | Cirno-$v-portable-x64.zip | ~97M | 免安装，解压即用 | 无 |
+
+          > 两个包都自带 .NET、Windows App SDK 与 VC++ 运行库。
+          > 卸载 MSI 默认保留会话数据（`%LOCALAPPDATA%\Cirno`）。
+
+          "@
+          gh release create $tag --title "Cirno $v" --target ${{ github.sha }} `
+            --notes $notes --generate-notes --latest `
+            (Get-ChildItem dist/*.zip, dist/*.msi | ForEach-Object FullName)

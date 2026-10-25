@@ -11,7 +11,7 @@ Cirno 是一个 WinUI 3 原生 Agent 座舱；本文件定义 Agent 在本仓库
 
 **范围内**
 
-- `apps/` 下的 WinUI 3 应用、`src/` 下的 Core 与后端适配器、`tools/theme` 主题管线、`themes/` 主题数据。
+- `src/` 下的 WinUI 3 应用、Core、后端适配器与 Shell 集成、`tools/theme` 主题管线、`themes/` 主题数据。
 - 文档：PRD / ARCHITECTURE / DECISIONS / specs。
 
 **非目标（明确排除）**
@@ -31,6 +31,8 @@ Cirno 是一个 WinUI 3 原生 Agent 座舱；本文件定义 Agent 在本仓库
 **全局规则**
 
 - 文档用简体中文；决策记录用 ADR 格式，编号从 ADR-101 起（ADR-001~026 属已删除的皮肤引擎阶段，不要占用这些编号）。
+- 版本号 CalVer `YY.MM.DD-HH`，`Directory.Build.props` 的 `<Version>` 是唯一权威，CI/安装脚本只读不写。
+  三段（`26.10.26`）或点分四段（`26.10.26.01`）均可；不要写成 `26.10.26-01`——NuGet 按 SemVer2 拒绝数字前导零的 prerelease 标识，restore 会失败。显示形态与 MSI 版本由 `tools/installer/build-msi.ps1` 派生。
 - 分层依赖单向：`App → Core → Abstractions ← Agents.*`。`Agents.*` 之间不得互相引用；新增后端只加适配器，不改 Core 与 UI。
 - 归一化事件模型是硬边界：界面层不得出现后端专有字段名；无法识别的条目降级展示，不得丢弃。
 - 每个审批请求必须有终态应答，否则后端工具调用会永久阻塞。
@@ -51,10 +53,10 @@ Cirno 是一个 WinUI 3 原生 Agent 座舱；本文件定义 Agent 在本仓库
 ```bash
 pnpm theme                          # 主题产物可生成、XML 合法、对比度闸门通过
 pnpm test:theme                     # 取色算法单测
-dotnet build apps/Cirno.slnx -p:Platform=x64   # 应用可编译
-dotnet test apps/Cirno.slnx -p:Platform=x64    # 协议夹具 + 存储层性能护栏
+dotnet build Cirno.slnx             # 应用可编译（App 由解决方案映射到 x64）
+dotnet test Cirno.slnx              # 协议夹具 + 存储层性能护栏
 # 存储层基准：dotnet run --project tools/perf -- --items 10000
-# 打 MSI：installer\build-msi.ps1（需要 WiX 5，见 module-packaging spec）
+# 打 MSI：tools\installer\build-msi.ps1（需要 WiX 5，见 module-packaging spec）
 ```
 
 - 会话 id 必须是标准 UUID（带连字符）：Claude 的 `--session-id` 会校验格式，无连字符会被后端直接拒启。
@@ -65,23 +67,26 @@ dotnet test apps/Cirno.slnx -p:Platform=x64    # 协议夹具 + 存储层性能�
   ```
   用 `--trace` 产出的 JSONL 断言事件序列，比肉眼可靠。
 
-- SDK 版本由根目录 `global.json` 锁定在 10.0.4xx；若 SDK 装在用户目录（如 `C:\Users\<u>\.dotnet`），需把该目录加入 PATH，或直接用其绝对路径调用 `dotnet.exe`。
+- SDK 版本由根目录 `global.json` 锁定在 10.0.4xx；若 SDK 装在用户目录（如 `%LOCALAPPDATA%\Microsoft\dotnet` 或 `C:\Users\<u>\.dotnet`），需把该目录加入 PATH，或直接用其绝对路径调用 `dotnet.exe`。
 - 启动验证：`Cirno.exe --theme dafeiyu` 可直接以插画主题启动，用于无人值守校验主题包。
 
 ## 目录速查
 
 - `README.md` — 项目速览与上手
 - `AGENTS.md` — 本文件：Agent 边界与约定
+- `Cirno.slnx` — 解决方案（/src/ /tests/ /tools/ 分组；App 映射 x64）
+- `Directory.Build.props` — 共享构建属性与 CalVer 版本唯一权威
+- `nuget.config` — 构建期 NuGet 源
 - `docs/PRD.md` — 做什么、给谁、不做什么、里程碑
 - `docs/ARCHITECTURE.md` — 系统结构、模块职责、数据流、技术边界
 - `docs/DECISIONS.md` — 决策记录（ADR-101 起；旧阶段内容已删除，追溯看 git）
 - `docs/specs/module-agent-protocol.md` — 两个后端协议的适配契约与归一化事件模型
 - `docs/specs/module-theme-pipeline.md` — 取色 → token → Theme.xaml 的产物契约
 - `docs/specs/module-packaging.md` — MSI 分发与依赖自举行为
-- `installer/` — MSI 构建：`build-msi.ps1`（发布 → 组件清单 → 打包）、`Package.wxs`（组件清单为生成物，不入库）
+- `tools/installer/` — MSI 构建：`build-msi.ps1`（发布 → 组件清单 → 打包）、`Package.wxs`（组件清单为生成物，不入库）
 - `tools/theme/` — 构建期主题管线（Node/TS）
+- `.github/workflows/windows.yml` — CI：主题构建 + 架构闸门 + 构建 + 测试 + MSI + portable zip；main 推送即发布 Release
 - `themes/<id>.theme/` — 主题数据：manifest + 源图（纯源文件，不含产物）
-- `apps/` — 解决方案文件
 - `src/Cirno.App/` — WinUI 3 可执行：窗口、视图、ViewModel、主题装配
 - `src/Cirno.Core/` — 会话编排（`SessionOrchestrator`）与 SQLite 持久化（`SessionStore`）
 - 外壳状态用 `--trace` 断言：日志里 `evt=ShellState` 会带 `taskbar-ready` / `progress-ok` / `badge` / `overlay-ok` / `tray-visible` / `job-assign`。

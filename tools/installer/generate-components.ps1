@@ -13,7 +13,7 @@ $files = Get-ChildItem -Path $root -Recurse -File |
 
 $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine('<?xml version="1.0" encoding="utf-8"?>')
-[void]$sb.AppendLine('<!-- 由 installer/generate-components.ps1 生成，请勿手工修改 -->')
+[void]$sb.AppendLine('<!-- 由 tools/installer/generate-components.ps1 生成，请勿手工修改 -->')
 [void]$sb.AppendLine('<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">')
 [void]$sb.AppendLine('  <Fragment>')
 [void]$sb.AppendLine('    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">')

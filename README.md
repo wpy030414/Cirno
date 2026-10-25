@@ -42,14 +42,14 @@ pnpm theme            # 构建主题资源（取色 → Theme.xaml + 资产，�
 pnpm theme:preview    # 预览取色结果
 pnpm theme:all        # 重建全部主题
 
-dotnet build apps/Cirno.slnx -p:Platform=x64
-dotnet test apps/Cirno.slnx -p:Platform=x64      # 协议夹具 + 存储层性能护栏
+dotnet build Cirno.slnx
+dotnet test Cirno.slnx        # 协议夹具 + 存储层性能护栏
 # 存储层基准（万条消息读写耗时）
 dotnet run --project tools/perf -- --items 10000
-# 打 MSI（自包含发布 → 组件清单 → WiX 打包，约 77MB）
-#   installer\build-msi.ps1
-# 运行（非打包，输出目录下的 Cirno.exe）
-./src/Cirno.App/bin/Debug/net10.0-windows10.0.26100.0/win-x64/Cirno.exe
+# 打 MSI（自包含发布 → 组件清单 → WiX 打包，约 82MB）
+#   tools\installer\build-msi.ps1
+# 运行（非打包，解决方案构建输出目录下的 Cirno.exe）
+./src/Cirno.App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/Cirno.exe
 ```
 
 启动参数：
@@ -68,6 +68,37 @@ dotnet run --project tools/perf -- --items 10000
 | `--restore-check <file>` | 开发自检：把还原结果写成 JSON |
 | `--shutdown` | 安装器用：请求正在运行的主实例优雅退出 |
 | `--perf <N>` | 开发自检：造 N 条消息，测还原/绑定/滚动/内存，报告写 `--perf-report` |
+
+## 仓库结构
+
+```
+Cirno/
+├── Cirno.slnx                 解决方案（/src/ /tests/ /tools/ 分组；App 映射 x64）
+├── Directory.Build.props      共享构建属性；CalVer 版本号唯一权威
+├── nuget.config               构建期 NuGet 源
+├── .github/workflows/         CI：构建 + 测试 + MSI + portable zip + Release
+├── src/Cirno.App/             WinUI 3 壳：窗口、视图、ViewModel、主题装配
+├── src/Cirno.Core/            会话编排与 SQLite 持久化
+├── src/Cirno.Agents.*/        后端适配器（Abstractions 契约 + Claude 实现）
+├── src/Cirno.Shell.Windows/   任务栏、托盘、跳转列表、单实例、Job Object
+├── tests/                     协议夹具回放、存储层护栏、假 Claude CLI
+├── tools/theme/               构建期主题管线（Node/TS）
+├── tools/perf/                存储层基准
+├── tools/installer/           MSI 定义与构建脚本
+├── themes/                    主题数据
+└── docs/                      PRD / ARCHITECTURE / DECISIONS / specs
+```
+
+- 依赖方向单向：`App → Core → Abstractions ← Agents.*`。
+- 版本号 **CalVer `YY.MM.DD-HH`**，`Directory.Build.props` 的 `<Version>` 是唯一权威；
+  三段（`26.10.26`）或点分四段（`26.10.26.01`，同日多次发布）均可，MSI 的 ProductVersion 由安装脚本取前三段。
+
+## 打包与发布（CI）
+
+- `.github/workflows/windows.yml`：单一 `windows-latest`。
+  - push `main` / PR → 主题构建与测试 + restore + 构建 + 协议测试 + MSI + portable zip。
+  - push `main` → 额外发布 Release（tag `v<version>`，同名先删后建，保持幂等）。
+- 版本号只读 `Directory.Build.props`；产物名、MSI ProductVersion 与 Release tag 全部由它派生，CI 不写版本。
 
 ## 当前状态
 

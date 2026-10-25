@@ -1,0 +1,24 @@
+<Solution>
+  <!--
+    Cirno.App 只声明 x64，故此处显式映射到 x64；解决方案构建会把 App 输出到 bin/x64/...
+    显式 `dotnet build src/Cirno.App/Cirno.App.csproj` 则输出到 bin/Debug/...。
+    两条路径并存时容易拿错旧二进制——端到端验证/发布请用 `dotnet publish ... -o <dir>`。
+  -->
+  <Folder Name="/src/">
+    <Project Path="src/Cirno.Agents.Abstractions/Cirno.Agents.Abstractions.csproj" />
+    <Project Path="src/Cirno.Agents.Claude/Cirno.Agents.Claude.csproj" />
+    <Project Path="src/Cirno.Core/Cirno.Core.csproj" />
+    <Project Path="src/Cirno.Shell.Windows/Cirno.Shell.Windows.csproj" />
+    <Project Path="src/Cirno.App/Cirno.App.csproj">
+      <Platform Project="x64" />
+    </Project>
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Cirno.Agents.Claude.Tests/Cirno.Agents.Claude.Tests.csproj" />
+    <Project Path="tests/Cirno.Core.Tests/Cirno.Core.Tests.csproj" />
+    <Project Path="tests/Cirno.FakeClaude/Cirno.FakeClaude.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/perf/Cirno.Perf.csproj" />
+  </Folder>
+</Solution>

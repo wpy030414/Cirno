@@ -481,3 +481,54 @@
 - 为什么选这个：这些都是「阅读与输入」路径上的摩擦，修复集中在视图层，不动会话与协议语义。
 - 后果：思考条目摘要是纯文本首行（不解析 Markdown）；状态条移除后，单会话细节只在侧栏状态点体现。
 - 何时重新审视：需要展示会话用量/模型等元信息时（应另设详情面板，而不是恢复状态行）。
+
+## ADR-137：仓库结构与构建约定对齐 Ceobe
+- 日期：2026-10-26
+- 状态：已采纳
+- 背景：Cirno 与 Ceobe 由同一人维护，但构建约定分叉：解决方案放在 `apps/`、每个 csproj 重复
+  TFM / Nullable / LangVersion、版本号由安装脚本参数临时注入（默认 0.1.0）。两个仓库之间切换时，
+  构建命令、版本来源与目录位置都需要重新记忆。
+- 考虑过的方案：保持现状；只把解决方案移到根；完整照搬 Ceobe（含 App.ViewModels 拆分、GitHub Actions、WiX 6）。
+- 决策：
+  1. `Cirno.slnx` 移到仓库根，按 `/src/`、`/tests/`、`/tools/` 分组；`Cirno.App` 用
+     `<Platform Project="x64" />` 映射，`dotnet build Cirno.slnx` 不再需要 `-p:Platform=x64`。
+  2. 新增根 `Directory.Build.props` 承载共享属性（TFM、Nullable、ImplicitUsings、LangVersion、
+     Deterministic、Authors、Product）；App 与 Shell.Windows 在各自 csproj 覆盖 Windows TFM。
+  3. 版本号改为 CalVer `YY.MM.DD-HH`，`Directory.Build.props` 的 `<Version>` 是唯一权威；
+     允许三段（`26.10.26`）或点分四段（`26.10.26.01`，同日多次发布），
+     显示形态与 MSI ProductVersion 由安装脚本派生。
+  4. 新增根 `nuget.config`（构建期走官方源）与 `.gitattributes`（`text=auto eol=lf`）。
+  5. 安装器从 `installer/` 迁到 `tools/installer/`，与主题管线、基准工具同处 `tools/`。
+- 为什么选这个：结构对齐的成本是一次性的，收益是每次构建/打包都少一次路径与版本来源的判断；
+  CalVer 单点权威避免了「程序集版本与 MSI 版本各说各话」。
+- 为什么不选其他：保持现状会让两个仓库继续漂移；完整照搬需要同时重验 ViewModel 拆分、CI 与
+  WiX 6 打包链路，超出本次「项目结构」的范围，且会与正在进行的界面迭代混在一起。
+- 后果：
+  - 构建入口统一为 `dotnet build Cirno.slnx`；App 的解决方案构建输出落在 `bin/x64/...`，
+    与直接构建单个 App 工程（`bin/Debug/...`）是两条路径，跑端到端前先确认用的是哪一个。
+  - `.gitattributes` 只影响后续 checkout；未做 `git add --renormalize`，避免把未提交改动混入暂存区。
+  - `apps/` 目录消失。
+- 何时重新审视：需要引入第二可执行（CLI）或要把 ViewModel 层纳入无窗口单测时（届时参考 Ceobe 的
+  `App.ViewModels` 与闸门 C）；需要自动发布时再补 GitHub Actions。
+
+## ADR-138：CI 采用与 Ceobe 同构的 Windows 流水线
+- 日期：2026-10-26
+- 状态：已采纳
+- 背景：ADR-137 把版本与构建约定收敛到 `Directory.Build.props` 之后，构建已经可以在一条命令内复现；
+  但发布仍靠手工执行 `build-msi.ps1`。Ceobe 的 `windows.yml` 已经把「构建 → 闸门 → 产物 → Release」跑通，
+  两个仓库没有理由维护两套发布方式。
+- 考虑过的方案：完全照搬 Ceobe（不跑测试、两档 GUI、WiX 6 + `dotnet-tools.json`）；只加构建、不加发布；
+  采用 Ceobe 的骨架并按 Cirno 的交付形态裁剪。
+- 决策：
+  1. 新增 `.github/workflows/windows.yml`，触发条件、并发控制、版本读取、Release 幂等策略与 Ceobe 一致。
+  2. Cirno 特有步骤：`pnpm install` + `pnpm theme` + `pnpm test:theme`（主题是构建期产物）、
+     `dotnet test`（协议夹具与假 CLI 均离线）、WiX 5 工具链（ADR-121）。
+  3. 只交付一档产物：自包含 MSI + 同目录 portable zip；没有 CLI，也不做框架依赖档。
+  4. 架构闸门改为「`Agents.*` 与 `Core` 零 WinUI 依赖」，对应本仓库的分层边界。
+- 为什么选这个：发布路径与 Ceobe 同构，维护成本最低；同时保留 Cirno 特有的主题构建与离线测试，
+  不让「对齐」变成删掉必要的质量门。
+- 为什么不选其他：完全照搬会引入两档 GUI 与 WiX 6 的额外验证；只构建不发布则仍要手工打 MSI，
+  与「main 推送即发布」的 Ceobe 习惯不一致。
+- 后果：每次 push `main` 都会按 `Directory.Build.props` 的版本发布 Release（同版本先删后建）；
+  版本号不 bump 时 Release 会被覆盖，这是刻意保留的幂等行为。
+- 何时重新审视：需要两档 GUI、CLI 或代码签名时；或 GitHub Actions 的 Windows 镜像不再预装 .NET 10 / VS 2022。

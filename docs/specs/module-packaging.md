@@ -19,17 +19,18 @@
 | Windows 11 22000+ | 否 | 低于该版本 Mica 降级为纯色，不阻断安装 |
 
 **关键取舍**：把三件事全部做进包里，「缺依赖」从安装期问题变成不存在的问题。
-代价是安装体积 227MB、MSI 77MB。
+代价是安装体积约 243MB、MSI 约 82MB。
 
 ### 构建
 
 ```powershell
-installer/build-msi.ps1 -Version 0.1.0
+tools/installer/build-msi.ps1            # 版本号默认读 Directory.Build.props
+tools/installer/build-msi.ps1 -Version 0.1.0   # 需要时显式覆盖
 ```
 
 步骤：自包含发布 → 拷贝 VC 运行库 → 生成组件清单 → WiX 打包。
 
-- 组件清单由 `installer/generate-components.ps1` 生成：**一个文件一个组件**，组件 Id 取相对路径的哈希，
+- 组件清单由 `tools/installer/generate-components.ps1` 生成：**一个文件一个组件**，组件 Id 取相对路径的哈希，
   保证多次构建稳定（MajorUpgrade 才能正确比对）。生成文件不入库。
 - 工具固定 **WiX 5.0.2**：WiX v7 起要求接受 OSMF 商业授权，v5 是最后一个可直接使用的免费版本。
 
@@ -59,8 +60,9 @@ installer/build-msi.ps1 -Version 0.1.0
 
 ## 输入 / 输出
 
-**输入**：`dotnet publish` 的自包含输出；构建机上的 VC redist；版本号（由脚本注入 `ProductVersion`）。
-**输出**：`artifacts/Cirno-<version>-x64.msi`（单文件、可静默 `/qn`、可升级）。
+**输入**：`dotnet publish` 的自包含输出；构建机上的 VC redist；版本号（`Directory.Build.props` 的 CalVer 权威值：
+三段 `26.10.26` 原样使用；点分四段 `26.10.26.01` 还原为显示形态 `26.10.26-01`，并派生 MSI `ProductVersion=26.10.26`）。
+**输出**：`artifacts/Cirno-<YY.MM.DD-HH>-x64.msi`（单文件、可静默 `/qn`、可升级）。
 
 ## 约束
 
@@ -86,7 +88,7 @@ installer/build-msi.ps1 -Version 0.1.0
 
 ## 验收标准
 
-- [x] 安装成功：540 个文件、227MB，开始菜单快捷方式存在。
+- [x] 安装成功：550 个组件、约 243MB，开始菜单快捷方式存在。
 - [x] 安装后的 exe 可直接启动并稳定存活。
 - [x] 卸载：安装目录与快捷方式移除，用户数据保留。
 - [x] 发布产物自带 VC 运行库（`vcruntime140.dll` 等 8 个 DLL 在应用目录）。

@@ -1,5 +1,5 @@
 ﻿param(
-    [string]$Version = "0.1.0",
+    [string]$Version,
     [string]$Configuration = "Release"
 )
 
@@ -9,9 +9,35 @@
 #   3. WiX 打包
 $ErrorActionPreference = "Stop"
 
-$repo = Split-Path $PSScriptRoot -Parent
-$dotnet = Join-Path $env:USERPROFILE ".dotnet\dotnet.exe"
-if (-not (Test-Path $dotnet)) { $dotnet = "dotnet" }
+# 仓库根：tools/installer 上溯两级
+$repo = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
+
+# 版本权威：Directory.Build.props 的 <Version>（CalVer 点分四段 YY.MM.DD.HH）。
+# 显示形态 YY.MM.DD-HH 用于文件名/关于信息；MSI ProductVersion 只接受 1-3 段数字。
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    [xml]$props = Get-Content (Join-Path $repo "Directory.Build.props")
+    $raw = ($props.Project.PropertyGroup | ForEach-Object { $_.Version } |
+            Where-Object { $_ } | Select-Object -First 1)
+    if (-not $raw) { throw "Directory.Build.props 缺少 <Version>" }
+    $parts = $raw.Split('.')
+    $Version = if ($parts.Count -ge 4) {
+        ($parts[0..2] -join '.') + '-' + ($parts[3..($parts.Count - 1)] -join '.')
+    } else {
+        $raw
+    }
+}
+$msiVersion = ($Version -split '-')[0]
+$segments = $msiVersion.Split('.')
+if ($segments.Count -gt 3) { $msiVersion = ($segments[0..2] -join '.') }
+"version: $Version (MSI ProductVersion: $msiVersion)"
+
+# 本机 SDK 可能不在 PATH：优先用用户目录安装的 dotnet（Ceobe 同样记录此位置）
+$dotnetCandidates = @(
+    (Join-Path $env:LOCALAPPDATA "Microsoft\dotnet\dotnet.exe"),
+    (Join-Path $env:USERPROFILE ".dotnet\dotnet.exe")
+)
+$dotnet = $dotnetCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $dotnet) { $dotnet = "dotnet" }
 
 $publishDir = Join-Path $repo "artifacts\publish"
 $msiPath = Join-Path $repo "artifacts\Cirno-$Version-x64.msi"
@@ -59,7 +85,7 @@ if ($installed -notmatch [regex]::Escape($utilExtension)) {
 
 & $wix build (Join-Path $PSScriptRoot "Package.wxs") $components `
     -ext WixToolset.Util.wixext `
-    -d "ProductVersion=$Version" `
+    -d "ProductVersion=$msiVersion" `
     -d "PublishDir=$publishDir" `
     -o $msiPath
 if ($LASTEXITCODE -ne 0) { throw "WiX 打包失败" }

@@ -4,7 +4,7 @@ dist
 
 # 构建产物（pnpm theme 生成的 artifacts/themes、.NET 输出、MSI 中间文件）
 artifacts
-installer/Components.generated.wxs
+tools/installer/Components.generated.wxs
 bin
 obj
 *.user
