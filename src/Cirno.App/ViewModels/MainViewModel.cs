@@ -92,15 +92,21 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 return;
             }
 
-            value?.LoadHistory();
+            if (value is not null)
+            {
+                _ = value.LoadHistoryAsync();
+            }
+
             ActiveSessionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
-    /// <summary>从本地库还原会话列表；不启动任何后端进程。</summary>
-    public void Restore()
+    /// <summary>
+    /// 从历史目录还原会话列表（权威源），本地库补充运行期字段；不启动任何后端进程。
+    /// </summary>
+    public async Task RestoreAsync(CancellationToken cancellationToken = default)
     {
-        foreach (var record in Orchestrator.GetSessions())
+        foreach (var record in await Orchestrator.GetSessionsAsync(cancellationToken))
         {
             Sessions.Add(CreateViewModel(record));
         }
@@ -143,20 +149,22 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         => Sessions.FirstOrDefault()?.WorkingDirectory ?? Environment.CurrentDirectory;
 
     /// <summary>开发期自检：把还原结果落成 JSON，用于无人值守断言。</summary>
-    public void WriteRestoreReport(string path)
+    public async Task WriteRestoreReportAsync(string path)
     {
-        var report = new
+        var reportSessions = new List<object>();
+        foreach (var session in Sessions)
         {
-            sessions = Sessions.Select(s => new
+            reportSessions.Add(new
             {
-                id = s.Id,
-                title = s.Title,
-                provider = s.Record.ProviderId,
-                workingDirectory = s.WorkingDirectory,
-                items = Orchestrator.LoadItems(s.Id).Count,
-            }),
-        };
+                id = session.Id,
+                title = session.Title,
+                provider = session.Record.ProviderId,
+                workingDirectory = session.WorkingDirectory,
+                items = (await Orchestrator.LoadItemsAsync(session.Id)).Count,
+            });
+        }
 
+        var report = new { sessions = reportSessions };
         File.WriteAllText(path, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
     }
 

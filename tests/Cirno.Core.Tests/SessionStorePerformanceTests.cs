@@ -90,6 +90,42 @@ public sealed class SessionStorePerformanceTests : IDisposable
         Assert.Single(store.LoadItems(session.Id));
     }
 
+    [Fact]
+    public void 整体替换_重建条目且序号连续()
+    {
+        using var store = new SessionStore(_databasePath);
+        var session = CreateSession();
+
+        store.AppendItems(session.Id, Enumerable.Range(0, 10).Select(CreateItem));
+        Assert.Equal(10, store.CountItems(session.Id));
+
+        store.ReplaceItems(session.Id, Enumerable.Range(0, 4).Select(CreateItem));
+
+        Assert.Equal(4, store.CountItems(session.Id));
+        Assert.Equal(Enumerable.Range(1, 4).Select(i => (long)i), store.LoadItemSequences(session.Id));
+
+        // 重建后续写：序号接在替换后的末尾，而不是旧数据的末尾
+        store.AppendItem(session.Id, CreateItem(99));
+        Assert.Equal(5, store.LoadItemSequences(session.Id).Max());
+    }
+
+    [Fact]
+    public void 整体替换_万条仍在写入预算内()
+    {
+        using var store = new SessionStore(_databasePath);
+        var session = CreateSession();
+        store.AppendItems(session.Id, Enumerable.Range(0, ItemCount / 2).Select(CreateItem));
+
+        var watch = Stopwatch.StartNew();
+        store.ReplaceItems(session.Id, Enumerable.Range(0, ItemCount).Select(CreateItem));
+        watch.Stop();
+
+        Assert.Equal(ItemCount, store.CountItems(session.Id));
+        Assert.True(
+            watch.ElapsedMilliseconds < 2000,
+            $"整体替换 {ItemCount} 条耗时 {watch.ElapsedMilliseconds} ms，超出 2000 ms 预算");
+    }
+
     public void Dispose()
     {
         try

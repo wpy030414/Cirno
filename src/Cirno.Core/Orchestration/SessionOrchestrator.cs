@@ -15,6 +15,7 @@ public sealed class SessionOrchestrator : IAsyncDisposable
 
     private readonly SessionStore _store;
     private readonly Dictionary<string, IAgentBackend> _backends;
+    private readonly Dictionary<string, IAgentHistorySource> _historySources;
     private readonly Action<int>? _onProcessStarted;
     private readonly Dictionary<string, Runtime> _runtimes = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _slots = new(MaxConcurrentSessions, MaxConcurrentSessions);
@@ -28,6 +29,15 @@ public sealed class SessionOrchestrator : IAsyncDisposable
     {
         _store = store;
         _backends = backends.ToDictionary(b => b.Id, StringComparer.OrdinalIgnoreCase);
+        _historySources = [];
+        foreach (var backend in _backends.Values)
+        {
+            if (backend.History is { } history)
+            {
+                _historySources[backend.Id] = history;
+            }
+        }
+
         _onProcessStarted = onProcessStarted;
     }
 
@@ -45,9 +55,128 @@ public sealed class SessionOrchestrator : IAsyncDisposable
     public IAgentBackend? GetBackend(string providerId)
         => _backends.TryGetValue(providerId, out var backend) ? backend : null;
 
-    public IReadOnlyList<SessionRecord> GetSessions() => _store.ListSessions();
+    /// <summary>
+    /// 会话列表：以各后端本地历史目录为权威源（ADR-132）。
+    /// 目录里有什么会话就列什么；本地库只补充运行期字段（model/title）与
+    /// 尚未落到历史目录的 pending 会话（backend_session_id 为空）。
+    /// 扫描在后台线程做元数据级读取，不解析全文。
+    /// </summary>
+    public async Task<IReadOnlyList<SessionRecord>> GetSessionsAsync(CancellationToken cancellationToken = default)
+    {
+        return await Task.Run(() =>
+        {
+            var merged = new Dictionary<string, SessionRecord>(StringComparer.Ordinal);
 
-    public IReadOnlyList<AgentItem> LoadItems(string sessionId) => _store.LoadItems(sessionId);
+            foreach (var source in _historySources.Values)
+            {
+                foreach (var summary in source.ListSessions())
+                {
+                    var record = _store.GetSession(summary.SessionId);
+                    merged[summary.SessionId] = new SessionRecord
+                    {
+                        Id = summary.SessionId,
+                        ProviderId = source.ProviderId,
+                        Model = record?.Model,
+                        WorkingDirectory = summary.WorkingDirectory,
+                        Title = summary.Title ?? record?.Title,
+                        BackendSessionId = summary.SessionId,
+                        CreatedAt = summary.FirstTimestamp ?? record?.CreatedAt ?? summary.LastActiveAt,
+                        UpdatedAt = Max(summary.LastActiveAt, record?.UpdatedAt ?? DateTimeOffset.MinValue),
+                    };
+                }
+            }
+
+            // pending 会话：新建未发送、或启动失败但已有本地条目——历史目录里还没有它们的文件
+            foreach (var record in _store.ListSessions())
+            {
+                if (string.IsNullOrEmpty(record.BackendSessionId))
+                {
+                    merged.TryAdd(record.Id, record);
+                }
+            }
+
+            return (IReadOnlyList<SessionRecord>)[.. merged.Values.OrderByDescending(r => r.UpdatedAt)];
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 惰性加载会话条目；本地库缺条目、或历史文件比库新（会话在别处继续过）时，
+    /// 先从历史目录导入再读库（ADR-132）。
+    /// 活会话（进程在跑）直接读库——live 事件已实时落盘，重导入反而会跟写入竞态。
+    /// </summary>
+    public async Task<IReadOnlyList<AgentItem>> LoadItemsAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        var runtime = GetRuntimeOrNull(sessionId);
+        if (runtime?.Session is not null)
+        {
+            return _store.LoadItems(sessionId);
+        }
+
+        var record = _store.GetSession(sessionId);
+        var needsImport = record is null || _store.CountItems(sessionId) == 0;
+
+        var found = FindHistory(sessionId);
+        if (found is ({ } source, { } summary))
+        {
+            if (!needsImport && summary.LastActiveAt > record!.UpdatedAt.ToUniversalTime())
+            {
+                needsImport = true;
+            }
+
+            if (needsImport)
+            {
+                var transcript = await Task.Run(
+                    () => source.ReadTranscript(summary), cancellationToken).ConfigureAwait(false);
+                if (transcript is not null)
+                {
+                    var imported = new SessionRecord
+                    {
+                        Id = sessionId,
+                        ProviderId = source.ProviderId,
+                        Model = record?.Model,
+                        WorkingDirectory = summary.WorkingDirectory,
+                        Title = summary.Title ?? record?.Title,
+                        BackendSessionId = summary.SessionId,
+                        CreatedAt = summary.FirstTimestamp ?? record?.CreatedAt ?? summary.LastActiveAt,
+                        UpdatedAt = summary.LastActiveAt,
+                    };
+
+                    _store.UpsertSession(imported);
+                    _store.ReplaceItems(sessionId, transcript.Items);
+
+                    // 已有运行时（从列表点开的）对齐新记录；没有也不强建——首次发送时 GetRuntime 自然补
+                    runtime ??= GetRuntimeOrNull(sessionId);
+                    if (runtime is not null)
+                    {
+                        lock (_gate)
+                        {
+                            runtime.Record = imported;
+                        }
+                    }
+                }
+                // transcript 为 null：文件在列表面板与点开之间被外部删了，保持空时间线
+            }
+        }
+
+        return _store.LoadItems(sessionId);
+    }
+
+    /// <summary>在历史目录里找会话的摘要；找不到返回 null（pending 会话或已外部删除）。</summary>
+    private (IAgentHistorySource Source, HistoricalSessionSummary Summary)? FindHistory(string sessionId)
+    {
+        foreach (var source in _historySources.Values)
+        {
+            var summary = source.ListSessions().FirstOrDefault(s => s.SessionId == sessionId);
+            if (summary is not null)
+            {
+                return (source, summary);
+            }
+        }
+
+        return null;
+    }
+
+    private static DateTimeOffset Max(DateTimeOffset left, DateTimeOffset right) => left > right ? left : right;
 
     /// <summary>
     /// 直接往本地库写条目，不经过后端。
@@ -159,6 +288,10 @@ public sealed class SessionOrchestrator : IAsyncDisposable
         return runtime.Session?.ResolveApprovalAsync(requestId, outcome, message) ?? Task.CompletedTask;
     }
 
+    /// <summary>
+    /// 删除会话：收尾进程 → 把历史转录移入回收站 → 清本地库。
+    /// 历史目录是权威源（ADR-132），回收站失败就整个中止——库未动，可重试。
+    /// </summary>
     public async Task DeleteAsync(string sessionId)
     {
         Runtime? runtime;
@@ -178,6 +311,14 @@ public sealed class SessionOrchestrator : IAsyncDisposable
             }
 
             ReleaseSlot(runtime);
+        }
+
+        foreach (var source in _historySources.Values)
+        {
+            if (source.TryDeleteTranscript(sessionId) == HistoryDeleteResult.Failed)
+            {
+                throw new InvalidOperationException("历史文件移入回收站失败，会话未被删除。");
+            }
         }
 
         _store.DeleteSession(sessionId);

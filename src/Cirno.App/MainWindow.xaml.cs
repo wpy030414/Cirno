@@ -143,7 +143,7 @@ public sealed partial class MainWindow : Window
 
         CommitJumpList();
 
-        _main.Restore();
+        // 会话列表在 OnRootLoaded 里异步还原：扫描历史目录不该挡住首帧
         OnActiveSessionChanged(null, EventArgs.Empty);
 
         RootGrid.Loaded += OnRootLoaded;
@@ -161,10 +161,13 @@ public sealed partial class MainWindow : Window
         RootGrid.Loaded -= OnRootLoaded;
         Composer.Focus(FocusState.Programmatic);
 
+        // 先还原会话列表（历史目录权威源，后台扫描），再跑自检链路
+        await _main.RestoreAsync();
+
         // 开发期自检：还原结果落成 JSON
         if (ReadArgument("--restore-check") is { } reportPath)
         {
-            _main.WriteRestoreReport(reportPath);
+            await _main.WriteRestoreReportAsync(reportPath);
         }
 
         // 开发期自检：万条消息的界面性能探针

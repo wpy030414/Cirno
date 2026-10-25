@@ -136,8 +136,11 @@ public sealed class SessionViewModel : ObservableObject
 
     public Visibility StopVisibility => _isBusy ? Visibility.Visible : Visibility.Collapsed;
 
-    /// <summary>惰性加载历史：只有被选中过的会话才读库。</summary>
-    public void LoadHistory()
+    /// <summary>
+    /// 惰性加载历史：只有被选中过的会话才读库；首次可能触发历史目录导入（ADR-132）。
+    /// 导入失败按发送失败同款落错——时间线给错误条目，界面不崩。
+    /// </summary>
+    public async Task LoadHistoryAsync()
     {
         if (_historyLoaded)
         {
@@ -146,16 +149,30 @@ public sealed class SessionViewModel : ObservableObject
 
         _historyLoaded = true;
 
-        // 一次批量提交：万条历史逐条 Add 会让绑定列表重排上万次
-        var items = new List<TimelineItem>();
-        foreach (var item in _orchestrator.LoadItems(Id))
+        try
         {
-            var vm = new TimelineItem(item);
-            _index[item.Id] = vm;
-            items.Add(vm);
-        }
+            var items = new List<TimelineItem>();
+            foreach (var item in await _orchestrator.LoadItemsAsync(Id))
+            {
+                var vm = new TimelineItem(item);
+                _index[item.Id] = vm;
+                items.Add(vm);
+            }
 
-        Items.AddRange(items);
+            // 一次批量提交：万条历史逐条 Add 会让绑定列表重排上万次
+            Items.AddRange(items);
+        }
+        catch (Exception ex)
+        {
+            AddItem(new AgentItem
+            {
+                Id = $"error:load:{Guid.NewGuid():n}",
+                Kind = AgentItemKind.Error,
+                Text = ex.Message,
+                IsError = true,
+            });
+            ApplyState(AgentSessionState.Failed);
+        }
     }
 
     public void ApplyRecord(SessionRecord record)

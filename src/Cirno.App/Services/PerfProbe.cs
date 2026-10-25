@@ -53,7 +53,7 @@ public sealed class PerfProbe
             tracePath: null);
 
         var restoreWatch = Stopwatch.StartNew();
-        vm.LoadHistory();
+        await vm.LoadHistoryAsync();
         restoreWatch.Stop();
         report.RestoreMs = restoreWatch.Elapsed.TotalMilliseconds;
         report.RestoredItems = vm.Items.Count;

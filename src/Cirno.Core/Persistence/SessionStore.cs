@@ -295,6 +295,71 @@ public sealed class SessionStore : IDisposable
         }
     }
 
+    /// <summary>会话条目数。导入判定用，避免为了判空把全量条目拉进内存。</summary>
+    public int CountItems(string sessionId)
+    {
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM items WHERE session_id = $session;";
+            command.Parameters.AddWithValue("$session", sessionId);
+            return Convert.ToInt32(command.ExecuteScalar() ?? 0L, CultureInfo.InvariantCulture);
+        }
+    }
+
+    /// <summary>
+    /// 整体替换会话条目：单事务 DELETE + 批量 INSERT。
+    /// <para>
+    /// 历史导入/重导入的幂等语义建立在「整体重建」上——live 落库的 user 条目 id
+    /// （user:&lt;guid:n&gt;）与转录行的 uuid 不同源，靠 item_id 去重并不可靠（ADR-132）。
+    /// </para>
+    /// </summary>
+    public void ReplaceItems(string sessionId, IEnumerable<AgentItem> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+
+        lock (_gate)
+        {
+            using var transaction = _connection.BeginTransaction();
+
+            using (var delete = _connection.CreateCommand())
+            {
+                delete.Transaction = transaction;
+                delete.CommandText = "DELETE FROM items WHERE session_id = $session;";
+                delete.Parameters.AddWithValue("$session", sessionId);
+                delete.ExecuteNonQuery();
+            }
+
+            var seq = 0L;
+            foreach (var item in items)
+            {
+                seq++;
+                using var command = _connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = """
+                    INSERT INTO items (session_id, item_id, seq, kind, text, detail, tool_name, tool_use_id, is_error, timestamp)
+                    VALUES ($session, $item, $seq, $kind, $text, $detail, $tool, $toolUse, $error, $ts);
+                    """;
+                command.Parameters.AddWithValue("$session", sessionId);
+                command.Parameters.AddWithValue("$item", item.Id);
+                command.Parameters.AddWithValue("$seq", seq);
+                command.Parameters.AddWithValue("$kind", (int)item.Kind);
+                command.Parameters.AddWithValue("$text", (object?)item.Text ?? DBNull.Value);
+                command.Parameters.AddWithValue("$detail", (object?)item.Detail ?? DBNull.Value);
+                command.Parameters.AddWithValue("$tool", (object?)item.ToolName ?? DBNull.Value);
+                command.Parameters.AddWithValue("$toolUse", (object?)item.ToolUseId ?? DBNull.Value);
+                command.Parameters.AddWithValue("$error", item.IsError ? 1 : 0);
+                command.Parameters.AddWithValue("$ts", Format(item.Timestamp));
+                command.ExecuteNonQuery();
+            }
+
+            transaction.Commit();
+
+            // 序号缓存续在重建后的末尾，免得下次取号再查一次 MAX
+            _nextSeq[sessionId] = seq + 1;
+        }
+    }
+
     /// <summary>
     /// 把 WAL 日志落回主库。应用退出时调用，避免下次打开要先回放大量 WAL。
     /// </summary>
